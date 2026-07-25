@@ -1,0 +1,69 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ---------- 共用判斷 ----------
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    // SHA-256 十六進位字串（64 位小寫）
+    function isSha256Hex(value) {
+      return value is string
+        && value.size() == 64
+        && value.matches('^[0-9a-f]{64}$');
+    }
+
+    // 管理者授權：比對使用者臨時憑證與 config/admin 的密碼雜湊。
+    // 前端只會送出 SHA-256 雜湊，明文密碼不離開瀏覽器；config 前端完全不可讀寫，
+    // 只有安全規則內部的 get() 能取用（get() 不受 read 規則限制）。
+    function isAdmin() {
+      return exists(/databases/$(database)/documents/admin_auth/$(request.auth.uid))
+        && get(/databases/$(database)/documents/admin_auth/$(request.auth.uid)).data.passwordHash
+           == get(/databases/$(database)/documents/config/admin).data.passwordHash;
+    }
+
+    // ---------- 集合規則 ----------
+
+    // 設定文件：僅供安全規則內部比對，前端完全不可讀寫
+    match /config/{document} {
+      allow read, write: if false;
+    }
+
+    // 管理者臨時憑證：只能操作自己的文件，且只能放 SHA-256 雜湊
+    match /admin_auth/{uid} {
+      allow get: if isSignedIn() && request.auth.uid == uid;
+      allow list: if false;
+
+      allow create, update: if isSignedIn()
+        && request.auth.uid == uid
+        && request.resource.data.keys().hasOnly(['passwordHash'])
+        && isSha256Hex(request.resource.data.passwordHash);
+
+      allow delete: if isSignedIn() && request.auth.uid == uid;
+    }
+
+    match /words/{word} {
+      allow read: if isSignedIn();
+
+      // 只能寫自己的字詞，且欄位、長度、次數都必須在合理範圍內。
+      // hasOnly 擋掉夾帶額外欄位灌爆文件（單份上限 1MB）的手法。
+      allow create, update: if isSignedIn()
+        && request.resource.data.keys().hasOnly(['text', 'count', 'timestamp', 'uid'])
+        && request.resource.data.text is string
+        && request.resource.data.text.size() > 0
+        && request.resource.data.text.size() <= 100
+        && request.resource.data.count is int
+        && request.resource.data.count > 0
+        && request.resource.data.count <= 1000
+        && request.resource.data.timestamp == request.time
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.uid + '_' + request.resource.data.text == word;
+
+      // 一般使用者只能刪自己的；一鍵刪除全部需通過 isAdmin() 的雜湊比對
+      allow delete: if isSignedIn()
+        && (resource.data.uid == request.auth.uid || isAdmin());
+    }
+  }
+}

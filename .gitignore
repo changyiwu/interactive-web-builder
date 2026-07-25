@@ -1,0 +1,44 @@
+# AntiGravity Workspace gitignore
+
+# Environment Files
+.env
+.env.local
+.env.*.local
+*.env
+
+# Temporary files and caches
+.cache/
+.npm/
+.yarn/
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+.local/
+bin/
+
+# NotebookLM exports and sensitive keys
+*notebooks.json
+*profile*
+credentials.json
+*.p12
+*.pem
+*.key
+service-account.json
+
+# Local configurations
+opencode.json
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.swp
+
+# OS files
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
