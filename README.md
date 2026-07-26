@@ -32,6 +32,20 @@ npx http-server
 
 打開瀏覽器前往提示的網址（通常為 `http://localhost:8080`）即可看到應用程式。
 
+#### 離線示範模式（localhost 自動啟用）
+
+正式站的 Firebase API key 設了 referrer 限制，**本機一定連不到 Firebase**
+（會看到 `auth/requests-from-referer-...-are-blocked`）。因此在 `localhost`、
+`127.0.0.1` 或 `file://` 開啟時，`app.js` 會跳過 Firebase 初始化，改用一份存在
+記憶體裡的假資料，讓 UI 調整不必每次都推上線才看得到效果。
+
+- 判斷依據為 `app.js` 的 `DEMO_HOSTS`，正式網域不在清單內，**線上行為完全不受影響**
+- 所有新增／刪除只存在當前分頁，重新整理就還原成種子資料
+- 此模式下「一鍵刪除全部」的管理密碼固定為 `demo`（方便同時測成功與失敗兩條路徑）
+- 頁面上方會有一條琥珀色橫幅標示目前是示範模式
+
+真正要驗證 Firestore 同步、安全規則或 App Check，仍然只能推上 GitHub Pages 實測。
+
 ### 2. Firebase 雲端設定步驟
 
 若要使用自訂的 Firebase 專案，請遵循以下設定：

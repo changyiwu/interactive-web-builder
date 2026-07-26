@@ -8,6 +8,7 @@
   --accent-secondary: #ec4899; /* Pink */
   --accent-cyan: #06b6d4; /* Cyan */
   --accent-green: #10b981; /* Emerald */
+  --accent-amber: #f59e0b; /* Amber */
   --danger-color: #ef4444;
   --border-color: rgba(255, 255, 255, 0.08);
   --glass-bg: rgba(255, 255, 255, 0.03);
@@ -16,7 +17,7 @@
   --glow-shadow: 0 0 15px rgba(139, 92, 246, 0.4);
   --transition-fast: 0.2s cubic-bezier(0.4, 0, 0.2, 1);
   --transition-normal: 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  
+
   /* 與 teaching-web 一致的背景 gradient */
   --background-gradient: radial-gradient(circle at 10% 20%, rgba(15, 23, 42, 1) 0%, rgba(20, 15, 50, 1) 50%, rgba(10, 8, 28, 1) 100%);
 }
@@ -24,7 +25,6 @@
 * {
   margin: 0;
   padding: 0;
-  box-style: border-box;
   box-sizing: border-box;
 }
 
@@ -57,6 +57,8 @@ body {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
   padding: 16px 24px;
   background: var(--glass-bg);
   backdrop-filter: blur(20px);
@@ -81,20 +83,33 @@ body {
   letter-spacing: -0.5px;
 }
 
-.logo .badge {
-  font-size: 11px;
-  font-weight: 500;
-  padding: 4px 10px;
-  background: rgba(139, 92, 246, 0.15);
-  border: 1px solid rgba(139, 92, 246, 0.3);
-  color: #c084fc;
-  border-radius: 20px;
+/* 離線示範模式橫幅 */
+.demo-banner {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  padding: 12px 20px;
+  border-radius: 12px;
+  border: 1px solid rgba(245, 158, 11, 0.35);
+  background: rgba(245, 158, 11, 0.1);
+  color: var(--accent-amber);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.demo-banner span {
+  color: var(--text-secondary);
+}
+
+.demo-banner.hidden {
+  display: none;
 }
 
 /* Main Section Layout */
 .app-main {
   display: grid;
-  grid-template-areas: 
+  grid-template-areas:
     "input cloud"
     "ranking cloud";
   grid-template-columns: 380px 1fr;
@@ -154,7 +169,7 @@ body {
 #text-form {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 12px;
 }
 
 .input-wrapper {
@@ -181,6 +196,18 @@ textarea:focus {
   box-shadow: 0 0 0 2px rgba(139, 92, 246, 0.2);
 }
 
+/* 即時解析提示（會顯示將新增幾個字詞、有無被過濾） */
+.input-hint {
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-secondary);
+  min-height: 18px;
+}
+
+.input-hint.warn {
+  color: var(--accent-amber);
+}
+
 /* Buttons and Interactions */
 button {
   cursor: pointer;
@@ -191,6 +218,11 @@ button {
   justify-content: center;
   gap: 8px;
   transition: all var(--transition-fast);
+}
+
+button:focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: 2px;
 }
 
 .primary-btn {
@@ -247,18 +279,12 @@ button {
   border-color: var(--danger-color);
 }
 
-.icon-btn {
-  background: transparent;
-  border: none;
-  color: var(--text-secondary);
-  padding: 8px;
-  border-radius: 50%;
-}
-
-.icon-btn:hover {
-  color: var(--text-primary);
-  background: var(--glass-bg-hover);
-  transform: rotate(45deg);
+/* 送出／刪除進行中：避免重複點擊，也讓使用者知道正在處理 */
+button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  transform: none !important;
+  box-shadow: none !important;
 }
 
 /* Status Indicator Header */
@@ -266,6 +292,24 @@ button {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 12px;
+}
+
+.card-title-group {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.summary-chip {
+  font-size: 12px;
+  color: var(--text-secondary);
+  padding: 3px 10px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--border-color);
+  white-space: nowrap;
 }
 
 .status-indicator {
@@ -284,6 +328,7 @@ button {
   height: 8px;
   border-radius: 50%;
   display: inline-block;
+  flex-shrink: 0;
 }
 
 .status-indicator.offline .status-dot {
@@ -319,6 +364,36 @@ canvas {
   width: 100%;
   height: 100%;
   display: block;
+}
+
+/* 連線正常但畫布沒有資料時的提示 */
+.cloud-hint {
+  position: absolute;
+  top: 0; left: 0; right: 0; bottom: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  padding: 32px;
+  text-align: center;
+  color: var(--text-secondary);
+  pointer-events: none;
+  transition: opacity var(--transition-normal);
+}
+
+.cloud-hint svg {
+  color: var(--accent-primary);
+  opacity: 0.5;
+}
+
+.cloud-hint p {
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.cloud-hint.hidden {
+  opacity: 0;
 }
 
 /* Setup Overlay */
@@ -364,12 +439,7 @@ canvas {
   line-height: 1.6;
 }
 
-.inline-icon {
-  vertical-align: middle;
-  margin: 0 2px;
-}
-
-/* Admin Verification Modal */
+/* Modal Dialogs (管理者驗證 / 通用確認) */
 .modal-overlay {
   position: fixed;
   top: 0; left: 0; right: 0; bottom: 0;
@@ -455,13 +525,57 @@ canvas {
   background: var(--glass-bg-hover);
 }
 
-.modal-actions button:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
+/* Toast Notifications */
+.toast-container {
+  position: fixed;
+  right: 24px;
+  bottom: 24px;
+  z-index: 200;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 10px;
+  pointer-events: none;
 }
 
+.toast {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: min(380px, calc(100vw - 48px));
+  padding: 12px 18px;
+  border-radius: 12px;
+  background: rgba(18, 19, 30, 0.92);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid var(--border-color);
+  border-left: 3px solid var(--accent-primary);
+  box-shadow: var(--glass-shadow);
+  color: var(--text-primary);
+  font-size: 13px;
+  line-height: 1.5;
+  animation: toast-in var(--transition-normal) ease-out;
+}
 
+.toast.leaving {
+  animation: toast-out var(--transition-normal) ease-in forwards;
+}
 
+.toast.success { border-left-color: var(--accent-green); }
+.toast.warn { border-left-color: var(--accent-amber); }
+.toast.error { border-left-color: var(--danger-color); }
+
+@keyframes toast-in {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes toast-out {
+  from { opacity: 1; transform: translateY(0); }
+  to { opacity: 0; transform: translateY(12px); }
+}
+
+/* Ranking List */
 .stat-container {
   overflow-y: auto;
   flex: 1;
@@ -491,6 +605,7 @@ canvas {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 10px;
   padding: 10px 14px;
   background: rgba(255, 255, 255, 0.02);
   border: 1px solid var(--border-color);
@@ -503,9 +618,32 @@ canvas {
   background: rgba(255, 255, 255, 0.05);
 }
 
+.rank-label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+/* 名次；前三名用主色highlight */
+.rank-index {
+  font-size: 11px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-secondary);
+  min-width: 20px;
+  text-align: right;
+  flex-shrink: 0;
+}
+
+.word-ranking li.top-rank .rank-index {
+  color: var(--accent-primary);
+}
+
 .word-ranking li .rank-word {
   font-weight: 500;
   color: var(--text-primary);
+  overflow-wrap: anywhere;
 }
 
 .word-ranking li .rank-count {
@@ -515,12 +653,14 @@ canvas {
   color: var(--accent-cyan);
   border-radius: 12px;
   font-weight: 600;
+  white-space: nowrap;
 }
 
 .rank-action-wrapper {
   display: flex;
   align-items: center;
   gap: 12px;
+  flex-shrink: 0;
 }
 
 .delete-btn {
@@ -557,110 +697,29 @@ canvas {
   background: transparent !important;
 }
 
-/* Modals */
-.modal {
-  position: fixed;
-  top: 0; left: 0; right: 0; bottom: 0;
-  background: rgba(0, 0, 0, 0.7);
-  backdrop-filter: blur(8px);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 100;
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity var(--transition-normal);
-  padding: 20px;
-}
+/* 桌機版把整個 app 框在視窗高度內：排行榜列出全部字詞時，改由 .stat-container
+   自己捲動，而不是把左欄撐高、連帶拉長文字雲畫布與整個頁面 */
+@media (min-width: 901px) {
+  .app-container {
+    height: 100vh;
+  }
 
-.modal.active {
-  opacity: 1;
-  pointer-events: all;
-}
+  .app-main,
+  .cloud-card,
+  .stat-card {
+    min-height: 0;
+  }
 
-.modal-content {
-  width: 100%;
-  max-width: 600px;
-  background: #0d0f1b;
-  border-color: rgba(255, 255, 255, 0.15);
-}
-
-.modal-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  border-bottom: 1px solid var(--border-color);
-  padding-bottom: 16px;
-}
-
-.modal-header h2 {
-  font-size: 22px;
-  font-weight: 600;
-}
-
-.close-btn {
-  background: transparent;
-  border: none;
-  font-size: 28px;
-  color: var(--text-secondary);
-}
-
-.close-btn:hover {
-  color: var(--text-primary);
-}
-
-.modal-desc {
-  color: var(--text-secondary);
-  font-size: 13px;
-  line-height: 1.5;
-}
-
-.form-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 16px;
-  margin: 10px 0;
-}
-
-.form-group {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.form-group label {
-  font-size: 12px;
-  color: var(--text-secondary);
-  font-weight: 500;
-}
-
-.form-group input {
-  background: rgba(0, 0, 0, 0.3);
-  border: 1px solid var(--border-color);
-  border-radius: 8px;
-  padding: 10px 14px;
-  color: var(--text-primary);
-  font-size: 13px;
-  outline: none;
-  transition: border-color var(--transition-fast);
-}
-
-.form-group input:focus {
-  border-color: var(--accent-primary);
-}
-
-.modal-footer {
-  display: flex;
-  justify-content: space-between;
-  border-top: 1px solid var(--border-color);
-  padding-top: 20px;
-  margin-top: 10px;
+  /* 排行榜保底高度：視窗很矮時寧可讓整頁多捲一點，也不要把清單壓成 0 高度 */
+  .app-main {
+    grid-template-rows: auto minmax(260px, 1fr);
+  }
 }
 
 /* Responsive Styles */
 @media (max-width: 900px) {
   .app-main {
-    grid-template-areas: 
+    grid-template-areas:
       "input"
       "cloud"
       "ranking";
@@ -674,9 +733,6 @@ canvas {
   .stat-card {
     max-height: 400px;
   }
-  .form-grid {
-    grid-template-columns: 1fr;
-  }
 }
 
 @media (max-width: 600px) {
@@ -684,49 +740,60 @@ canvas {
     padding: 12px;
     gap: 16px;
   }
-  
+
   .app-header {
     padding: 12px 16px;
     border-radius: 12px;
+    gap: 10px;
   }
-  
+
   .logo span.gradient-text {
     font-size: 22px;
   }
-  
-  .logo .badge {
-    font-size: 10px;
-    padding: 2px 8px;
-  }
-  
+
   .glass-card {
     padding: 18px;
     border-radius: 16px;
     gap: 12px;
   }
-  
+
   .glass-card h2 {
     font-size: 18px;
   }
-  
+
   textarea {
     height: 110px;
     padding: 12px;
     font-size: 13px;
   }
-  
+
   .primary-btn {
     padding: 12px 16px;
     font-size: 14px;
   }
-  
+
   .cloud-card {
     min-height: 350px;
     height: 50vh;
   }
-  
+
+  .card-header {
+    flex-wrap: wrap;
+  }
+
   .rank-action-wrapper {
     gap: 8px;
+  }
+
+  .toast-container {
+    right: 12px;
+    left: 12px;
+    bottom: 12px;
+    align-items: stretch;
+  }
+
+  .toast {
+    max-width: none;
   }
 }
 
@@ -739,6 +806,12 @@ canvas {
 
 .pulse {
   animation: pulse 2.5s infinite ease-in-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pulse { animation: none; }
+  .toast { animation: none; }
+  .glow-btn:hover { transform: none; }
 }
 
 .compact-btn {
