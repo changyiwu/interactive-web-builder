@@ -42,3 +42,6 @@ Thumbs.db
 ehthumbs.db
 Desktop.ini
 $RECYCLE.BIN/
+
+# Claude Code 本機設定
+.claude/

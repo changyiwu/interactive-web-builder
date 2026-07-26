@@ -7,12 +7,16 @@
 
 ## 關鍵時程
 - 2026-06-07：專案初始化與 GitHub Actions / GitHub Pages 上線部署
+- 2026-07-26：安全性強化；因原始碼曾含明文管理密碼，捨棄 23 個 commit 的歷史重建 repo
 
 ## 目標與路線圖
 - [x] 階段一：建立線上文字雲核心 HTML/CSS/JS 功能與視覺美化
 - [x] 階段二：串接 Firebase Firestore 即時同步與權限安全規則
 - [x] 階段三：新增刪除單一字詞、不雅字詞敏感詞過濾功能
-- [ ] 階段四：UI 介面與功能細節持續優化
+- [x] 階段四：安全性強化——雜湊式管理授權、規則欄位與數值界線、App Check、git 歷史重建
+- [ ] 階段五：觀察 App Check 指標，確認多數請求已驗證後開啟 Firestore 強制執行
+- [ ] 階段六：實測「一鍵刪除全部」完整流程（會真的清空資料，需挑時機）
+- [ ] 階段七：UI 介面與功能細節持續優化
 
 ## 資料夾結構
 - `app.js`：核心邏輯與 Firestore 即時監聽/過濾處理
@@ -43,7 +47,11 @@
 
 ## 安全與隱私
 
-- 不要 commit API key、token、密碼或 Firebase Admin 憑證（前端公開的 Firebase API key 除外，但仍應限制來源網域）
+- 不要 commit API key、token、密碼或 Firebase Admin 憑證
+- 兩個「可以公開」的例外，其餘一律不進 repo：
+  - Firebase Web API key（識別碼，非憑證；仍須限制來源網域，目前已設 referrer 限制）
+  - reCAPTCHA v3 **site key**（公開金鑰）——對應的 **secret key** 只填在 Firebase Console
+- 管理密碼一律以 SHA-256 雜湊存於 Firestore `config/admin`，明文不進原始碼也不進資料庫
 - 不要 commit NotebookLM 個人匯出清單或筆記本 ID 清單
 - 不要自動納入無關的 Git 變更
 - 不要儲存學生真名；正式資料只使用班級代號與座號

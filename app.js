@@ -48,6 +48,11 @@ const themeColors = [
 // secret key belongs only in the Firebase console, never in this repo.
 const RECAPTCHA_SITE_KEY = '6LfHM2UtAAAAAFg3pFgvRtMiUXNfLvWC1ny3C0bj';
 
+// 只在正式網域啟用。本機以 file:// 或 localhost 開啟時 reCAPTCHA 換不到有效 token，
+// 跳過初始化才不會擋住開發。此處必須與 reCAPTCHA 主控台註冊的網域一致；
+// 日後若換網域（例如自訂網域），這裡與 reCAPTCHA 設定要同步更新，否則正式站會拿不到 token。
+const APP_CHECK_HOSTS = ['changyiwu.github.io'];
+
 const defaultConfig = {
   projectId: "word-cloud-c0bfe",
   appId: "1:728868598304:web:889ed446abe3ec7a178245",
@@ -130,11 +135,16 @@ async function initFirebase(config) {
   }
 }
 
-// Attest that requests really originate from this site. Skipped while the site key
-// is unset, so the app keeps working before App Check is configured.
+// Attest that requests really originate from this site. Skipped when the site key is
+// unset or when running outside the registered hosts, so local development still works.
 function setupAppCheck(app) {
   if (!RECAPTCHA_SITE_KEY || RECAPTCHA_SITE_KEY === 'REPLACE_WITH_SITE_KEY') {
     console.warn('App Check 未啟用：RECAPTCHA_SITE_KEY 尚未填入。');
+    return;
+  }
+
+  if (!APP_CHECK_HOSTS.includes(location.hostname)) {
+    console.warn(`App Check 未啟用：${location.hostname || 'file://'} 不在 APP_CHECK_HOSTS 清單中（本機開發為正常現象）。`);
     return;
   }
 
