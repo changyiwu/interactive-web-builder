@@ -45,3 +45,6 @@ $RECYCLE.BIN/
 
 # Claude Code 本機設定
 .claude/
+
+# 交接檔含真實電腦名與本機路徑，只走雲端硬碟同步，不進公開 repo
+handoff.md
