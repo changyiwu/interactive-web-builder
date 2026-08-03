@@ -53,6 +53,16 @@
 
 **本檔不要出現的東西**：❌ `## 最近進度`／逐次工作紀錄、❌ 決策理由與踩坑完整版。歷史寫 L3 筆記的〈🗓️ 最近更動紀錄〉〈🧠 決策紀錄〉〈🕳️ 踩坑筆記〉；踩過的坑只把**結論**收斂成一條祈使句寫進〈工作約定〉，原因留 L3。
 
+## 專案專屬規則
+
+- **離線示範模式的判斷依據是 `app.js` 的 `DEMO_HOSTS`**（`localhost`／`127.0.0.1`／`file://`）；正式網域不在清單內，線上行為不受影響。此模式下管理密碼固定為 `demo`。要在本機測真實 Firebase，得先解除 API key 的 referrer 限制，再把 host 從 `DEMO_HOSTS` 拿掉
+- **本機 `python -m http.server` 沒送 Cache-Control**，瀏覽器會拿舊的 `app.js`／`index.css`。改完沒反應時先用 `fetch(url, {cache:'reload'})` 或硬重新整理，**別誤判成程式沒生效**
+- **桌機版（≥901px）用 `height: 100vh` 把佈局框在視窗內**，排行榜靠自己的捲軸。改左欄內容（例如加高 textarea）會直接壓縮排行榜可視高度，動之前先確認 `.stat-container` 沒被壓到 0。視窗矮於 800px 時整頁小幅捲動，是刻意的降級
+- **不要在觀察指標前就開 App Check 的 Enforce**，會立刻讓所有使用者無法讀寫
+- **管理密碼的暴力破解問題沒有根治**：安全規則沒有速率限制，任何人都能匿名登入後反覆嘗試刪除來猜密碼。根治要把權限判定移到 Cloud Functions（需 Blaze 方案）。現行做法只是提高成本，不是消除弱點——**這是已知且接受的風險**
+- **換網域時要同步更新四處**：`app.js` 的 `APP_CHECK_HOSTS`、reCAPTCHA 主控台網域清單、Firebase Console 的 App Check 設定、Firebase API key 的 referrer 限制。漏改會**靜默失敗**（未 Enforce 時完全無感）
+- GitHub Pages 設定為 `build_type: workflow`（與 `deploy.yml` 一致）；`.claude/launch.json` 是本機預覽設定（`python -m http.server 5173`），目前在版控內，不需要可 `git rm --cached`
+
 ## 工作約定
 - 任何 Agent、任何電腦：**開工先讀 `handoff.md`，收工必更新 `handoff.md`**
 - 修改共用檔案前先讀最新內容，避免覆蓋其他 Agent 的變更
