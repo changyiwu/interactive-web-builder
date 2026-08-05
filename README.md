@@ -1,6 +1,16 @@
-# Cloudify - 協作線上文字雲 ☁️
+# interactive-web-builder ☁️📊
 
-Cloudify 是一個即時協作的線上文字雲 Web 應用程式。使用者可以輸入整段文字或多個字詞，系統會自動拆解進行詞頻分析，並透過 Firebase Firestore 即時同步，在所有連接的瀏覽器上呈現動態更新的文字雲畫布。
+聽眾即時互動網頁的製作專案。包含兩個部分：
+
+1. **Cloudify 文字雲正式站**（本 repo 根目錄）——即時協作的線上文字雲。使用者輸入整段文字或多個字詞，系統自動拆解進行詞頻分析，透過 Firebase Firestore 即時同步，在所有連接的瀏覽器上呈現動態更新的文字雲畫布。
+2. **兩個可跨專案使用的技能**（`skills/`）——給定參數就產生一份可獨立部署的互動網頁，讓其他專案（例如 `html-slide-builder` 的簡報）放一張 QR Code 連過去：
+
+| 技能 | 產出 | 資料位置 |
+|------|------|---------|
+| `word-cloud-page` | 即時文字雲頁（斷詞、詞頻、排行榜、管理員清空） | `clouds/<cloudId>/words/` |
+| `poll-page` | 即時投票頁（圓餅／甜甜圈／長條／累積趨勢圖表） | `polls/<pollId>/votes/` |
+
+三者共用同一個 Firebase 專案與同一份 `firestore.rules`，各走各的路徑，互不干擾。產出的互動頁放在**呼叫端專案的資料夾**，本 repo 只留模板。
 
 ## ✨ 特色功能
 
@@ -58,7 +68,7 @@ npx http-server
    firebase deploy --only firestore:rules
    ```
 5. 建立一個 Web 應用程式並複製 Firebase SDK 設定物件。
-6. 修改 [app.js](file:///c:/Users/chang/我的雲端硬碟/agents/antigravity/online-word-cloud/app.js) 中的 `defaultConfig` 為您專屬的 Firebase 設定物件：
+6. 修改 [app.js](app.js) 中的 `defaultConfig` 為您專屬的 Firebase 設定物件（`skills/` 底下兩個模板的 `FIREBASE_CONFIG` 也要一起換）：
    ```javascript
    const defaultConfig = {
      projectId: "YOUR_PROJECT_ID",
@@ -110,24 +120,33 @@ App Check 只在 `APP_CHECK_HOSTS` 列出的網域啟用（目前為 `changyiwu.
 
 本專案使用 GitHub Actions 進行持續整合與部署。
 
-- 設定檔位於：[.github/workflows/deploy.yml](file:///c:/Users/chang/我的雲端硬碟/agents/antigravity/online-word-cloud/.github/workflows/deploy.yml)
+- 設定檔位於：[.github/workflows/deploy.yml](.github/workflows/deploy.yml)
 - 每次將代碼推送到 `main` 分支時，GitHub Actions 會自動建置並部署至您的 GitHub Pages。
 - **重要提醒**：請確認您 GitHub 倉庫的設定中，**Settings > Pages > Build and deployment > Source** 已被設定為 **GitHub Actions**。
 
 ## 📝 專案結構
 
 ```text
-online-word-cloud/
+interactive-web-builder/
 ├── .github/
 │   └── workflows/
 │       └── deploy.yml      # GitHub Actions 部署工作流
-├── index.html              # 主頁面結構
+├── index.html              # 文字雲正式站：主頁面結構
 ├── index.css               # 毛玻璃與響應式 CSS 樣式
 ├── app.js                  # 文字解析、Firebase 連接與 WordCloud 渲染邏輯
+├── skills/
+│   ├── word-cloud-page/    # 技能：產生獨立的即時文字雲頁
+│   │   ├── SKILL.md
+│   │   ├── assets/word-cloud-page.html      # 單檔模板
+│   │   └── references/firestore-setup.md
+│   └── poll-page/          # 技能：產生獨立的即時投票頁（含統計圖表）
+│       ├── SKILL.md
+│       ├── assets/poll-page.html            # 單檔模板
+│       └── references/firestore-setup.md
 ├── tools/
 │   └── set-admin-password.mjs  # 產生管理密碼與 SHA-256 雜湊
 ├── firebase.json           # Firebase 專案設定檔
-├── firestore.rules         # Firestore 安全規則
+├── firestore.rules         # Firestore 安全規則（三條路徑的正本）
 ├── .gitignore              # Git 忽略清單
 ├── agents.md               # 專案藍圖（跨 Agent 開發規範）
 └── handoff.md              # 交接檔

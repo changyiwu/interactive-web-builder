@@ -1,0 +1,1459 @@
+<!DOCTYPE html>
+<!--
+  即時投票頁（單檔版）— 由 poll-page 技能產生
+
+  產生時必須取代的占位符：
+    {{POLL_ID}}         Firestore 子集合 id，只能英數／底線／連字號，最長 40 字
+    {{PAGE_TITLE}}      頁面標題（瀏覽器分頁與左上角都會用）
+    {{INTRO}}           一句話說明，給聽眾看
+    {{QUESTIONS_JSON}}  題目陣列（JS 字面值），格式見技能 SKILL.md
+
+  Firestore 路徑：polls/{{POLL_ID}}/votes/<uid>_<題號>
+  相依：安全規則必須已含 match /polls/{pollId}/votes/{ballot}（見技能的 references/firestore-setup.md）
+-->
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{PAGE_TITLE}}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@300;400;500;700&family=Outfit:wght@300;400;500;700&display=swap" rel="stylesheet">
+  <!-- 統計圖表 -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+  <!-- QR Code（只有按下按鈕時才用到，所以 defer） -->
+  <script defer src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+
+  <style>
+    :root {
+      --bg-primary: #0a0b10;
+      --text-primary: #f8fafc;
+      --text-secondary: #94a3b8;
+      --accent-primary: #8b5cf6;
+      --accent-secondary: #ec4899;
+      --accent-cyan: #06b6d4;
+      --accent-green: #10b981;
+      --accent-amber: #f59e0b;
+      --danger-color: #ef4444;
+      --border-color: rgba(255, 255, 255, 0.08);
+      --glass-bg: rgba(255, 255, 255, 0.03);
+      --glass-bg-hover: rgba(255, 255, 255, 0.06);
+      --glass-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+      --glow-shadow: 0 0 15px rgba(139, 92, 246, 0.4);
+      --transition-fast: 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+      --transition-normal: 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      --background-gradient: radial-gradient(circle at 10% 20%, rgba(15, 23, 42, 1) 0%, rgba(20, 15, 50, 1) 50%, rgba(10, 8, 28, 1) 100%);
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      background: var(--background-gradient);
+      background-attachment: fixed;
+      background-size: cover;
+      color: var(--text-primary);
+      font-family: 'Outfit', 'Noto Sans TC', sans-serif;
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    .app-container {
+      max-width: 1440px;
+      margin: 0 auto;
+      padding: 24px;
+      display: flex;
+      flex-direction: column;
+      min-height: 100vh;
+      gap: 24px;
+    }
+
+    .app-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 16px;
+      flex-wrap: wrap;
+      padding: 16px 24px;
+      background: var(--glass-bg);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border: 1px solid var(--border-color);
+      border-radius: 16px;
+      box-shadow: var(--glass-shadow);
+    }
+
+    .logo { display: flex; align-items: center; gap: 12px; }
+
+    .logo-mark {
+      width: 44px;
+      height: 44px;
+      flex: 0 0 auto;
+      color: var(--accent-primary);
+      filter: drop-shadow(0 0 12px rgba(139, 92, 246, 0.32));
+    }
+
+    .logo span.gradient-text {
+      font-size: 28px;
+      font-weight: 700;
+      background: linear-gradient(135deg, var(--accent-cyan) 0%, var(--accent-primary) 50%, var(--accent-secondary) 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      letter-spacing: -0.5px;
+    }
+
+    .header-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+
+    .status-indicator {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 12px;
+      background: rgba(0, 0, 0, 0.2);
+      border-radius: 30px;
+      border: 1px solid var(--border-color);
+      font-size: 12px;
+    }
+
+    .status-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; flex-shrink: 0; }
+    .status-indicator.offline .status-dot { background-color: var(--danger-color); box-shadow: 0 0 8px var(--danger-color); }
+    .status-indicator.online .status-dot { background-color: var(--accent-green); box-shadow: 0 0 8px var(--accent-green); }
+
+    .demo-banner {
+      display: flex;
+      align-items: baseline;
+      flex-wrap: wrap;
+      gap: 4px 10px;
+      padding: 12px 20px;
+      border-radius: 12px;
+      border: 1px solid rgba(245, 158, 11, 0.35);
+      background: rgba(245, 158, 11, 0.1);
+      color: var(--accent-amber);
+      font-size: 13px;
+      line-height: 1.5;
+    }
+
+    .demo-banner span { color: var(--text-secondary); }
+    .demo-banner.hidden { display: none; }
+
+    .app-intro { color: var(--text-secondary); font-size: 14px; line-height: 1.6; padding: 0 4px; }
+
+    .app-main { display: flex; flex-direction: column; gap: 24px; flex: 1; }
+
+    .glass-card {
+      background: var(--glass-bg);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border: 1px solid var(--border-color);
+      border-radius: 20px;
+      padding: 28px;
+      box-shadow: var(--glass-shadow);
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      position: relative;
+      transition: border-color var(--transition-normal);
+    }
+
+    .glass-card:hover { border-color: rgba(255, 255, 255, 0.15); }
+    .glass-card h2 { font-size: 20px; font-weight: 600; letter-spacing: -0.2px; }
+    .glass-card .subtitle { color: var(--text-secondary); font-size: 13px; line-height: 1.5; }
+
+    .card-header { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+    .card-title-group { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; min-width: 0; }
+
+    .summary-chip {
+      font-size: 12px;
+      color: var(--text-secondary);
+      padding: 3px 10px;
+      border-radius: 12px;
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid var(--border-color);
+      white-space: nowrap;
+    }
+
+    /* 一題 = 一張卡：左邊投票，右邊即時圖表 */
+    .poll-body {
+      display: grid;
+      grid-template-columns: minmax(280px, 420px) 1fr;
+      gap: 24px;
+      align-items: start;
+    }
+
+    .poll-options { display: flex; flex-direction: column; gap: 12px; }
+
+    button {
+      cursor: pointer;
+      font-family: inherit;
+      font-weight: 500;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      transition: all var(--transition-fast);
+    }
+
+    button:focus-visible { outline: 2px solid var(--accent-primary); outline-offset: 2px; }
+
+    button:disabled {
+      opacity: 0.55;
+      cursor: not-allowed;
+      transform: none !important;
+      box-shadow: none !important;
+    }
+
+    .option-btn {
+      width: 100%;
+      display: block;
+      text-align: left;
+      padding: 14px 16px;
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid var(--border-color);
+      border-radius: 12px;
+      color: var(--text-primary);
+      font-size: 15px;
+    }
+
+    .option-btn:hover { background: var(--glass-bg-hover); border-color: rgba(255, 255, 255, 0.18); }
+
+    .option-btn[aria-pressed="true"] {
+      border-color: var(--accent-primary);
+      background: rgba(139, 92, 246, 0.12);
+      box-shadow: var(--glow-shadow);
+    }
+
+    .option-line { display: flex; align-items: center; gap: 12px; }
+
+    .option-check {
+      flex: 0 0 24px;
+      height: 24px;
+      border-radius: 50%;
+      border: 2px solid rgba(255, 255, 255, 0.25);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 13px;
+      color: #fff;
+    }
+
+    .option-btn[aria-pressed="true"] .option-check {
+      background: var(--accent-primary);
+      border-color: var(--accent-primary);
+    }
+
+    .option-label { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+
+    .option-count {
+      flex: 0 0 auto;
+      font-size: 12px;
+      font-weight: 600;
+      font-variant-numeric: tabular-nums;
+      color: var(--accent-cyan);
+      white-space: nowrap;
+    }
+
+    .option-bar {
+      margin-top: 10px;
+      height: 6px;
+      background: rgba(255, 255, 255, 0.08);
+      border-radius: 4px;
+      overflow: hidden;
+    }
+
+    .option-bar > div {
+      height: 100%;
+      width: 0;
+      border-radius: 4px;
+      background: linear-gradient(90deg, var(--accent-primary), var(--accent-secondary));
+      transition: width var(--transition-normal);
+    }
+
+    .poll-foot { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 12px; color: var(--text-secondary); }
+
+    .chart-panel { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+
+    .chart-types { display: flex; gap: 8px; flex-wrap: wrap; }
+
+    .chart-type-btn {
+      padding: 6px 12px;
+      font-size: 12px;
+      border-radius: 8px;
+      background: transparent;
+      color: var(--text-secondary);
+      border: 1px solid var(--border-color);
+    }
+
+    .chart-type-btn:hover { color: var(--text-primary); background: var(--glass-bg-hover); }
+
+    .chart-type-btn.active {
+      color: var(--text-primary);
+      border-color: var(--accent-primary);
+      background: rgba(139, 92, 246, 0.15);
+    }
+
+    .chart-box {
+      position: relative;
+      height: 340px;
+      background: rgba(0, 0, 0, 0.2);
+      border: 1px solid var(--border-color);
+      border-radius: 12px;
+      padding: 16px;
+    }
+
+    .chart-empty {
+      position: absolute;
+      top: 0; left: 0; right: 0; bottom: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      padding: 24px;
+      color: var(--text-secondary);
+      font-size: 14px;
+      pointer-events: none;
+    }
+
+    .chart-empty.hidden { display: none; }
+
+    .primary-btn {
+      background: linear-gradient(135deg, var(--accent-primary) 0%, var(--accent-secondary) 100%);
+      border: none;
+      color: white;
+      padding: 14px 20px;
+      border-radius: 12px;
+      font-size: 15px;
+      font-weight: 600;
+    }
+
+    .danger-btn {
+      background: transparent;
+      color: var(--danger-color);
+      border: 1px solid rgba(239, 68, 68, 0.3);
+      padding: 12px 18px;
+      border-radius: 12px;
+      font-size: 14px;
+    }
+
+    .danger-btn:hover { background: rgba(239, 68, 68, 0.08); border-color: var(--danger-color); }
+
+    .ghost-btn {
+      background: transparent;
+      color: var(--text-secondary);
+      border: 1px solid var(--border-color);
+      padding: 12px 18px;
+      border-radius: 12px;
+      font-size: 14px;
+    }
+
+    .ghost-btn:hover { color: var(--text-primary); background: var(--glass-bg-hover); }
+    .compact-btn { padding: 6px 12px; font-size: 12px; border-radius: 8px; }
+
+    .overlay {
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(10, 11, 16, 0.85);
+      backdrop-filter: blur(10px);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 40px;
+      text-align: center;
+      z-index: 50;
+      transition: opacity var(--transition-normal);
+    }
+
+    .overlay.hidden { opacity: 0; pointer-events: none; }
+
+    .overlay-content { max-width: 480px; display: flex; flex-direction: column; align-items: center; gap: 20px; }
+    .overlay-content svg { color: var(--accent-primary); }
+    .overlay-content h3 { font-size: 24px; font-weight: 600; }
+    .overlay-content p { color: var(--text-secondary); font-size: 14px; line-height: 1.6; }
+
+    .modal-overlay {
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(10, 11, 16, 0.75);
+      backdrop-filter: blur(10px);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+      z-index: 100;
+      transition: opacity var(--transition-normal);
+    }
+
+    .modal-overlay.hidden { opacity: 0; pointer-events: none; }
+    .modal-card { width: 100%; max-width: 420px; display: flex; flex-direction: column; gap: 16px; }
+    .modal-field { display: flex; flex-direction: column; gap: 6px; }
+    .modal-field span { font-size: 13px; color: var(--text-secondary); }
+
+    .modal-field input {
+      width: 100%;
+      background: rgba(0, 0, 0, 0.2);
+      border: 1px solid var(--border-color);
+      border-radius: 12px;
+      color: var(--text-primary);
+      font-family: inherit;
+      font-size: 14px;
+      padding: 12px 16px;
+      outline: none;
+      transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+    }
+
+    .modal-field input:focus { border-color: var(--accent-primary); box-shadow: 0 0 0 2px rgba(139, 92, 246, 0.2); }
+    .modal-error { color: var(--danger-color); font-size: 13px; line-height: 1.5; }
+    .modal-error.hidden { display: none; }
+    .modal-actions { display: flex; justify-content: flex-end; gap: 12px; }
+
+    /* 網址 QR Code 對話框 */
+    .qr-card { max-width: 360px; text-align: center; }
+
+    /* 白底留白就是 QR 的靜空區，掃描器需要它才認得出邊界 */
+    .qr-frame {
+      width: 100%;
+      max-width: 292px;
+      margin: 0 auto;
+      padding: 16px;
+      background: #ffffff;
+      border-radius: 16px;
+      box-shadow: var(--glass-shadow);
+    }
+
+    .qr-frame canvas, .qr-frame img { display: block; width: 100%; height: auto; }
+    .qr-frame:empty { display: none; }
+
+    .qr-url {
+      font-size: 12px;
+      color: var(--text-secondary);
+      word-break: break-all;
+      line-height: 1.6;
+      user-select: all;
+    }
+
+    .qr-card .modal-actions { justify-content: center; flex-wrap: wrap; }
+
+    .toast-container {
+      position: fixed;
+      right: 24px;
+      bottom: 24px;
+      z-index: 200;
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      gap: 10px;
+      pointer-events: none;
+    }
+
+    .toast {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      max-width: min(380px, calc(100vw - 48px));
+      padding: 12px 18px;
+      border-radius: 12px;
+      background: rgba(18, 19, 30, 0.92);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border: 1px solid var(--border-color);
+      border-left: 3px solid var(--accent-primary);
+      box-shadow: var(--glass-shadow);
+      color: var(--text-primary);
+      font-size: 13px;
+      line-height: 1.5;
+      animation: toast-in var(--transition-normal) ease-out;
+    }
+
+    .toast.leaving { animation: toast-out var(--transition-normal) ease-in forwards; }
+    .toast.success { border-left-color: var(--accent-green); }
+    .toast.warn { border-left-color: var(--accent-amber); }
+    .toast.error { border-left-color: var(--danger-color); }
+
+    @keyframes toast-in {
+      from { opacity: 0; transform: translateY(12px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    @keyframes toast-out {
+      from { opacity: 1; transform: translateY(0); }
+      to { opacity: 0; transform: translateY(12px); }
+    }
+
+    @keyframes pulse {
+      0% { transform: scale(1); }
+      50% { transform: scale(1.05); }
+      100% { transform: scale(1); }
+    }
+
+    .pulse { animation: pulse 2.5s infinite ease-in-out; }
+
+    @media (max-width: 900px) {
+      .poll-body { grid-template-columns: 1fr; }
+      .chart-box { height: 300px; }
+    }
+
+    @media (max-width: 600px) {
+      .app-container { padding: 12px; gap: 16px; }
+      .app-header { padding: 12px 16px; border-radius: 12px; gap: 10px; }
+      .logo span.gradient-text { font-size: 22px; }
+      .logo-mark { width: 36px; height: 36px; }
+      .glass-card { padding: 18px; border-radius: 16px; gap: 12px; }
+      .glass-card h2 { font-size: 18px; }
+      .option-btn { padding: 12px 14px; font-size: 14px; }
+      .chart-box { height: 260px; padding: 10px; }
+      .toast-container { right: 12px; left: 12px; bottom: 12px; align-items: stretch; }
+      .toast { max-width: none; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .pulse { animation: none; }
+      .toast { animation: none; }
+      .option-bar > div { transition: none; }
+    }
+  </style>
+</head>
+<body>
+  <div class="app-container">
+    <header class="app-header">
+      <div class="logo">
+        <svg class="logo-mark" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M3 3v18h18"></path>
+          <rect x="7" y="12" width="3" height="6" rx="1"></rect>
+          <rect x="12" y="8" width="3" height="10" rx="1"></rect>
+          <rect x="17" y="4" width="3" height="14" rx="1"></rect>
+        </svg>
+        <span class="gradient-text">{{PAGE_TITLE}}</span>
+      </div>
+      <div class="header-actions">
+        <button type="button" id="qr-btn" class="ghost-btn compact-btn" title="顯示這個頁面網址的 QR Code">
+          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1"></rect><rect x="14" y="3" width="7" height="7" rx="1"></rect><rect x="3" y="14" width="7" height="7" rx="1"></rect><path d="M14 14h3v3h-3z"></path><path d="M21 14v3"></path><path d="M14 21h7"></path></svg>
+          <span>網址 QR Code</span>
+        </button>
+        <button type="button" id="reset-btn" class="danger-btn compact-btn" title="清空這份投票的所有票數">
+          <span>一鍵重置投票</span>
+        </button>
+        <div id="connection-status" class="status-indicator offline" role="status" aria-live="polite">
+          <span class="status-dot"></span>
+          <span class="status-text">未連接 Firebase</span>
+        </div>
+      </div>
+    </header>
+
+    <!-- 離線示範模式提示（只在本機開發時顯示） -->
+    <div id="demo-banner" class="demo-banner hidden" role="status">
+      <strong>離線示範模式</strong>
+      <span>本機預覽連不到 Firebase，目前顯示的是假資料，所有操作都只存在這個分頁裡。</span>
+    </div>
+
+    <p class="app-intro">{{INTRO}}</p>
+
+    <!-- 題目卡由 JS 依 QUESTIONS 產生 -->
+    <main class="app-main" id="poll-main"></main>
+  </div>
+
+  <!-- 連線遮罩 -->
+  <div id="welcome-overlay" class="overlay">
+    <div class="overlay-content">
+      <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="pulse"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg>
+      <h3>連線驗證中...</h3>
+      <p>正在建立安全的資料庫連接。如果此畫面持續顯示，請確認 Firebase 專案已啟用匿名登入，且這個網域已註冊在 App Check／reCAPTCHA 設定裡。</p>
+    </div>
+  </div>
+
+  <!-- 管理者驗證對話框 -->
+  <div id="admin-modal" class="modal-overlay hidden">
+    <form id="admin-form" class="glass-card modal-card" role="dialog" aria-modal="true" aria-labelledby="admin-modal-title">
+      <h2 id="admin-modal-title">管理者驗證</h2>
+      <p class="subtitle">「一鍵重置投票」需要管理密碼。密碼只會在瀏覽器內換算成雜湊送出，明文不會離開這個頁面。</p>
+
+      <label class="modal-field">
+        <span>管理密碼</span>
+        <input id="admin-password" type="password" autocomplete="current-password" required>
+      </label>
+
+      <p id="admin-error" class="modal-error hidden" role="alert"></p>
+
+      <div class="modal-actions">
+        <button type="button" id="admin-cancel" class="ghost-btn"><span>取消</span></button>
+        <button type="submit" id="admin-submit" class="danger-btn"><span>確認清空票數</span></button>
+      </div>
+    </form>
+  </div>
+
+  <!-- 網址 QR Code 對話框 -->
+  <div id="qr-modal" class="modal-overlay hidden">
+    <div class="glass-card modal-card qr-card" role="dialog" aria-modal="true" aria-labelledby="qr-modal-title" aria-describedby="qr-modal-desc">
+      <h2 id="qr-modal-title">掃描參與投票</h2>
+      <p id="qr-modal-desc" class="subtitle">用手機相機掃描下方 QR Code，就能直接開啟這個頁面投票。</p>
+
+      <div id="qr-frame" class="qr-frame"></div>
+      <p id="qr-url" class="qr-url"></p>
+
+      <div class="modal-actions">
+        <button type="button" id="qr-copy" class="ghost-btn"><span>複製網址</span></button>
+        <button type="button" id="qr-download" class="ghost-btn"><span>下載圖片</span></button>
+        <button type="button" id="qr-close" class="primary-btn"><span>關閉</span></button>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast-container" class="toast-container" role="status" aria-live="polite"></div>
+
+  <script type="module">
+    // =======================================================================
+    // 產生這份頁面時要換掉的設定
+    // =======================================================================
+
+    // 這份投票在 Firestore 的位置：polls/<POLL_ID>/votes/<uid>_<題號>
+    // 只能用英數、底線、連字號，最長 40 字（安全規則會擋）
+    const POLL_ID = '{{POLL_ID}}';
+
+    // 題目。每題的 id 就是安全規則裡的 question（最長 40 字），
+    // 同一頁裡不可重複；選項的 id 也最長 40 字。
+    // chart 預設圖表：'pie' | 'doughnut' | 'bar' | 'line'
+    const QUESTIONS = {{QUESTIONS_JSON}};
+
+    // 共用的 Firebase 專案。Web API key 是識別碼不是憑證，可以公開；
+    // 真正的防線是 API key 的 referrer 限制 ＋ 安全規則 ＋ App Check。
+    const FIREBASE_CONFIG = {
+      projectId: "word-cloud-c0bfe",
+      appId: "1:728868598304:web:889ed446abe3ec7a178245",
+      storageBucket: "word-cloud-c0bfe.firebasestorage.app",
+      apiKey: "AIzaSyBSOlD-jYf8xDMbwEtbWEvpRiMd95CAS9I",
+      authDomain: "word-cloud-c0bfe.firebaseapp.com",
+      messagingSenderId: "728868598304"
+    };
+
+    // reCAPTCHA v3 的 site key 是公開金鑰（secret key 只填在 Firebase Console）。
+    // APP_CHECK_HOSTS 必須與 reCAPTCHA 主控台註冊的網域一致；換網域要同步更新，
+    // 否則正式站換不到 token，而 Firestore 已開 Enforce 會把請求全部擋掉。
+    const RECAPTCHA_SITE_KEY = '6LfHM2UtAAAAAFg3pFgvRtMiUXNfLvWC1ny3C0bj';
+    const APP_CHECK_HOSTS = ['changyiwu.github.io'];
+
+    // 本機預覽時 API key 的 referrer 限制會擋掉請求（這是刻意的安全設定，不要為了
+    // 方便去放寬）。改跑離線示範模式，版面與互動照樣看得到，資料只存在這個分頁。
+    const DEMO_HOSTS = ['localhost', '127.0.0.1', ''];
+    const DEMO_MODE = DEMO_HOSTS.includes(location.hostname);
+    const DEMO_UID = 'demo-me';
+    const DEMO_ADMIN_PASSWORD = 'demo';
+
+    // Firestore 單次批次最多 500 個操作
+    const BATCH_LIMIT = 500;
+
+    // 圖表配色：依選項順序取用
+    const CHART_COLORS = [
+      '#8b5cf6', '#06b6d4', '#ec4899', '#10b981',
+      '#f59e0b', '#3b82f6', '#f472b6', '#22d3ee'
+    ];
+
+    const CHART_TYPES = [
+      { id: 'pie', label: '圓餅圖' },
+      { id: 'doughnut', label: '甜甜圈' },
+      { id: 'bar', label: '長條圖' },
+      { id: 'line', label: '累積趨勢' }
+    ];
+
+    // =======================================================================
+    // 狀態與 DOM
+    // =======================================================================
+
+    let fb = null;      // 動態載入的 Firebase SDK
+    let db = null;
+    let auth = null;
+    let unsubscribe = null;
+    let myUid = null;
+
+    // 題號 -> { 選項 id: 票數 }
+    let tally = {};
+    // 題號 -> 我投的選項 id
+    let myVotes = {};
+    // 原始票據（累積趨勢圖用）：{ question, option, uid, at }
+    let ballots = [];
+
+    const charts = {};        // 題號 -> Chart 實例
+    const chartTypes = {};    // 題號 -> 目前顯示的圖表類型
+
+    const pollMain = document.getElementById('poll-main');
+    const connectionStatus = document.getElementById('connection-status');
+    const welcomeOverlay = document.getElementById('welcome-overlay');
+    const demoBanner = document.getElementById('demo-banner');
+
+    const resetBtn = document.getElementById('reset-btn');
+    const adminModal = document.getElementById('admin-modal');
+    const adminForm = document.getElementById('admin-form');
+    const adminPassword = document.getElementById('admin-password');
+    const adminError = document.getElementById('admin-error');
+    const adminSubmit = document.getElementById('admin-submit');
+    const adminCancel = document.getElementById('admin-cancel');
+
+    const qrBtn = document.getElementById('qr-btn');
+    const qrModal = document.getElementById('qr-modal');
+    const qrFrame = document.getElementById('qr-frame');
+    const qrUrlText = document.getElementById('qr-url');
+    const qrCopyBtn = document.getElementById('qr-copy');
+    const qrDownloadBtn = document.getElementById('qr-download');
+    const qrCloseBtn = document.getElementById('qr-close');
+
+    const toastContainer = document.getElementById('toast-container');
+
+    // =======================================================================
+    // 小工具
+    // =======================================================================
+
+    function showToast(message, type = 'info', duration = 3600) {
+      const toast = document.createElement('div');
+      toast.className = `toast ${type}`;
+      toast.textContent = message;
+      toastContainer.appendChild(toast);
+
+      setTimeout(() => {
+        toast.classList.add('leaving');
+        toast.addEventListener('animationend', () => toast.remove(), { once: true });
+        // prefers-reduced-motion 會停用動畫，animationend 就不會觸發
+        setTimeout(() => toast.remove(), 600);
+      }, duration);
+    }
+
+    function formatClock(ms) {
+      return new Date(ms).toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit' });
+    }
+
+    // =======================================================================
+    // 對話框：Esc 關閉、焦點鎖定、關閉後焦點還原
+    // =======================================================================
+
+    let activeModal = null;
+
+    function getFocusable(root) {
+      const selector = 'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [href], [tabindex]:not([tabindex="-1"])';
+      return Array.from(root.querySelectorAll(selector));
+    }
+
+    function openModal(overlay, initialFocus, onDismiss) {
+      activeModal = { overlay, previousFocus: document.activeElement, onDismiss };
+      overlay.classList.remove('hidden');
+      const target = initialFocus || getFocusable(overlay)[0];
+      if (target) target.focus();
+    }
+
+    function closeModal() {
+      if (!activeModal) return;
+      const { overlay, previousFocus } = activeModal;
+      activeModal = null;
+      overlay.classList.add('hidden');
+      if (previousFocus && typeof previousFocus.focus === 'function') previousFocus.focus();
+    }
+
+    document.addEventListener('keydown', (e) => {
+      if (!activeModal) return;
+
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        activeModal.onDismiss();
+        return;
+      }
+
+      if (e.key !== 'Tab') return;
+
+      const items = getFocusable(activeModal.overlay);
+      if (items.length === 0) return;
+      const first = items[0];
+      const last = items[items.length - 1];
+
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault();
+        first.focus();
+      }
+    });
+
+    // =======================================================================
+    // 網址 QR Code
+    // =======================================================================
+
+    // 產生時的像素尺寸；顯示由 CSS 縮放，投影放大也不會糊
+    const QR_PIXEL_SIZE = 520;
+
+    function pageShareUrl() {
+      // hash 只影響本頁捲動位置，不該進 QR
+      return location.href.split('#')[0];
+    }
+
+    function renderQrCode(url) {
+      if (typeof QRCode === 'undefined') throw new Error('QRCode 程式庫未載入');
+      qrFrame.innerHTML = '';
+      new QRCode(qrFrame, {
+        text: url,
+        width: QR_PIXEL_SIZE,
+        height: QR_PIXEL_SIZE,
+        colorDark: '#0a0b10',
+        colorLight: '#ffffff',
+        correctLevel: QRCode.CorrectLevel.M
+      });
+    }
+
+    async function copyShareUrl() {
+      const url = pageShareUrl();
+      try {
+        if (!navigator.clipboard) throw new Error('clipboard API 不可用');
+        await navigator.clipboard.writeText(url);
+        showToast('已複製網址', 'success');
+      } catch (error) {
+        console.error('Failed to copy URL:', error);
+        showToast('瀏覽器不允許自動複製，請手動選取下方網址。', 'warn');
+      }
+    }
+
+    // 另存一張帶白色外框的圖，直接貼進簡報或講義也掃得到
+    function downloadQrImage() {
+      const source = qrFrame.querySelector('canvas');
+      if (!source) {
+        showToast('QR Code 尚未產生，無法下載。', 'error');
+        return;
+      }
+
+      const margin = Math.round(source.width / 12);
+      const output = document.createElement('canvas');
+      output.width = source.width + margin * 2;
+      output.height = source.height + margin * 2;
+
+      const ctx = output.getContext('2d');
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, output.width, output.height);
+      ctx.drawImage(source, margin, margin);
+
+      const link = document.createElement('a');
+      link.download = `${POLL_ID}-qrcode.png`;
+      link.href = output.toDataURL('image/png');
+      link.click();
+    }
+
+    function dismissQrModal() { closeModal(); }
+
+    qrBtn.addEventListener('click', () => {
+      const url = pageShareUrl();
+      qrUrlText.textContent = url;
+
+      try {
+        renderQrCode(url);
+      } catch (error) {
+        // CDN 被擋掉時只是少了圖，網址與複製功能照常可用
+        console.error('Failed to render QR code:', error);
+        qrFrame.innerHTML = '';
+        showToast('QR Code 產生失敗（外部資源可能被封鎖），請改用「複製網址」。', 'error', 6000);
+      }
+
+      openModal(qrModal, qrCloseBtn, dismissQrModal);
+    });
+
+    qrCopyBtn.addEventListener('click', copyShareUrl);
+    qrDownloadBtn.addEventListener('click', downloadQrImage);
+    qrCloseBtn.addEventListener('click', dismissQrModal);
+    qrModal.addEventListener('click', (e) => { if (e.target === qrModal) dismissQrModal(); });
+
+    // =======================================================================
+    // 版面：一題一張卡
+    // =======================================================================
+
+    function buildQuestionCards() {
+      const fragment = document.createDocumentFragment();
+
+      QUESTIONS.forEach((q) => {
+        chartTypes[q.id] = CHART_TYPES.some((t) => t.id === q.chart) ? q.chart : 'pie';
+
+        const card = document.createElement('section');
+        card.className = 'glass-card';
+        card.dataset.question = q.id;
+
+        const header = document.createElement('div');
+        header.className = 'card-header';
+        const titleGroup = document.createElement('div');
+        titleGroup.className = 'card-title-group';
+        const h2 = document.createElement('h2');
+        h2.textContent = q.title;
+        const chip = document.createElement('span');
+        chip.className = 'summary-chip';
+        chip.id = `total-${q.id}`;
+        chip.setAttribute('aria-live', 'polite');
+        chip.textContent = '尚無人投票';
+        titleGroup.append(h2, chip);
+        header.appendChild(titleGroup);
+
+        const types = document.createElement('div');
+        types.className = 'chart-types';
+        CHART_TYPES.forEach((t) => {
+          const btn = document.createElement('button');
+          btn.type = 'button';
+          btn.className = 'chart-type-btn' + (t.id === chartTypes[q.id] ? ' active' : '');
+          btn.textContent = t.label;
+          btn.dataset.chartType = t.id;
+          btn.addEventListener('click', () => {
+            chartTypes[q.id] = t.id;
+            types.querySelectorAll('.chart-type-btn').forEach((b) => {
+              b.classList.toggle('active', b.dataset.chartType === t.id);
+            });
+            // Chart.js 不允許就地換 type，得重建
+            if (charts[q.id]) { charts[q.id].destroy(); charts[q.id] = null; }
+            renderChart(q);
+          });
+          types.appendChild(btn);
+        });
+        header.appendChild(types);
+
+        const body = document.createElement('div');
+        body.className = 'poll-body';
+
+        const options = document.createElement('div');
+        options.className = 'poll-options';
+        options.setAttribute('role', 'group');
+        options.setAttribute('aria-label', q.title);
+
+        q.options.forEach((opt, index) => {
+          const btn = document.createElement('button');
+          btn.type = 'button';
+          btn.className = 'option-btn';
+          btn.id = `opt-${q.id}-${opt.id}`;
+          btn.setAttribute('aria-pressed', 'false');
+          btn.innerHTML = `
+            <span class="option-line">
+              <span class="option-check" aria-hidden="true"></span>
+              <span class="option-label"></span>
+              <span class="option-count">0 票 / 0%</span>
+            </span>
+            <span class="option-bar"><div style="background:${CHART_COLORS[index % CHART_COLORS.length]}"></div></span>
+          `;
+          btn.querySelector('.option-label').textContent = opt.label;
+          btn.addEventListener('click', () => castVote(q, opt));
+          options.appendChild(btn);
+        });
+
+        const foot = document.createElement('div');
+        foot.className = 'poll-foot';
+        foot.innerHTML = '<span>再按一次已選的選項可以收回這一票</span>';
+        options.appendChild(foot);
+
+        const panel = document.createElement('div');
+        panel.className = 'chart-panel';
+        const box = document.createElement('div');
+        box.className = 'chart-box';
+        const canvas = document.createElement('canvas');
+        canvas.id = `chart-${q.id}`;
+        const empty = document.createElement('div');
+        empty.className = 'chart-empty';
+        empty.id = `chart-empty-${q.id}`;
+        empty.textContent = '還沒有人投票，第一票進來就會畫出圖表。';
+        box.append(canvas, empty);
+        panel.appendChild(box);
+
+        body.append(options, panel);
+        card.append(header, body);
+        fragment.appendChild(card);
+      });
+
+      pollMain.appendChild(fragment);
+    }
+
+    // =======================================================================
+    // 統計與圖表
+    // =======================================================================
+
+    function questionTotal(q) {
+      const counts = tally[q.id] || {};
+      return q.options.reduce((sum, opt) => sum + (counts[opt.id] || 0), 0);
+    }
+
+    function renderAll() {
+      QUESTIONS.forEach((q) => {
+        const counts = tally[q.id] || {};
+        const total = questionTotal(q);
+
+        document.getElementById(`total-${q.id}`).textContent =
+          total === 0 ? '尚無人投票' : `${total} 人已投票`;
+
+        q.options.forEach((opt) => {
+          const btn = document.getElementById(`opt-${q.id}-${opt.id}`);
+          if (!btn) return;
+          const count = counts[opt.id] || 0;
+          const pct = total > 0 ? Math.round((count / total) * 100) : 0;
+          const mine = myVotes[q.id] === opt.id;
+
+          btn.setAttribute('aria-pressed', mine ? 'true' : 'false');
+          btn.querySelector('.option-check').textContent = mine ? '✓' : '';
+          btn.querySelector('.option-count').textContent = `${count} 票 / ${pct}%`;
+          btn.querySelector('.option-bar > div').style.width = `${pct}%`;
+        });
+
+        document.getElementById(`chart-empty-${q.id}`).classList.toggle('hidden', total > 0);
+        renderChart(q);
+      });
+    }
+
+    // 累積趨勢：把票據依時間排序，逐票累加。使用者改投票時只會留下最後一次的
+    // 時間，所以這是「目前這些票是何時進來的」，不是完整的投票歷史。
+    function cumulativeSeries(q) {
+      const rows = ballots
+        .filter((b) => b.question === q.id && b.at)
+        .sort((a, b) => a.at - b.at);
+
+      const running = {};
+      const data = {};
+      q.options.forEach((opt) => { running[opt.id] = 0; data[opt.id] = [0]; });
+      const labels = ['開始'];
+
+      rows.forEach((row) => {
+        if (running[row.option] === undefined) return; // 選項已被改掉的舊票
+        running[row.option] += 1;
+        labels.push(formatClock(row.at));
+        q.options.forEach((opt) => data[opt.id].push(running[opt.id]));
+      });
+
+      return { labels, data };
+    }
+
+    function chartConfig(q) {
+      const type = chartTypes[q.id];
+      const counts = tally[q.id] || {};
+      const colors = q.options.map((_, i) => CHART_COLORS[i % CHART_COLORS.length]);
+
+      const common = {
+        responsive: true,
+        maintainAspectRatio: false,
+        animation: { duration: 400 },
+        plugins: {
+          legend: { labels: { color: '#94a3b8', font: { family: 'Outfit, "Noto Sans TC", sans-serif' } } }
+        }
+      };
+
+      if (type === 'line') {
+        const series = cumulativeSeries(q);
+        return {
+          type: 'line',
+          data: {
+            labels: series.labels,
+            datasets: q.options.map((opt, i) => ({
+              label: opt.label,
+              data: series.data[opt.id],
+              borderColor: colors[i],
+              backgroundColor: colors[i],
+              tension: 0.3,
+              pointRadius: 2,
+              borderWidth: 2,
+              fill: false
+            }))
+          },
+          options: {
+            ...common,
+            scales: {
+              x: { ticks: { color: '#94a3b8' }, grid: { color: 'rgba(255,255,255,0.06)' } },
+              y: { beginAtZero: true, ticks: { color: '#94a3b8', precision: 0 }, grid: { color: 'rgba(255,255,255,0.06)' } }
+            }
+          }
+        };
+      }
+
+      const data = q.options.map((opt) => counts[opt.id] || 0);
+
+      if (type === 'bar') {
+        return {
+          type: 'bar',
+          data: {
+            labels: q.options.map((opt) => opt.label),
+            datasets: [{ label: '票數', data, backgroundColor: colors, borderWidth: 0, borderRadius: 8 }]
+          },
+          options: {
+            ...common,
+            plugins: { ...common.plugins, legend: { display: false } },
+            scales: {
+              x: { ticks: { color: '#94a3b8' }, grid: { display: false } },
+              y: { beginAtZero: true, ticks: { color: '#94a3b8', precision: 0 }, grid: { color: 'rgba(255,255,255,0.06)' } }
+            }
+          }
+        };
+      }
+
+      // pie / doughnut
+      return {
+        type,
+        data: {
+          labels: q.options.map((opt) => opt.label),
+          datasets: [{ data, backgroundColor: colors, borderColor: 'rgba(10,11,16,0.6)', borderWidth: 2 }]
+        },
+        options: common
+      };
+    }
+
+    function renderChart(q) {
+      if (typeof Chart === 'undefined') return; // CDN 被擋時只是沒有圖，票數照常顯示
+      const canvas = document.getElementById(`chart-${q.id}`);
+      if (!canvas) return;
+
+      const config = chartConfig(q);
+
+      if (charts[q.id]) {
+        // 同一種圖表就地更新，避免每次同步都重畫整張圖而閃爍
+        charts[q.id].data = config.data;
+        charts[q.id].options = config.options;
+        charts[q.id].update();
+        return;
+      }
+
+      charts[q.id] = new Chart(canvas.getContext('2d'), config);
+    }
+
+    // =======================================================================
+    // Firebase
+    // =======================================================================
+
+    // 動態載入，這樣離線示範模式完全不必連外
+    async function loadFirebaseSdk() {
+      const base = 'https://www.gstatic.com/firebasejs/10.8.0/';
+      const [appMod, firestoreMod, authMod, checkMod] = await Promise.all([
+        import(base + 'firebase-app.js'),
+        import(base + 'firebase-firestore.js'),
+        import(base + 'firebase-auth.js'),
+        import(base + 'firebase-app-check.js')
+      ]);
+      return { ...appMod, ...firestoreMod, ...authMod, ...checkMod };
+    }
+
+    function votesCollection() {
+      return fb.collection(db, 'polls', POLL_ID, 'votes');
+    }
+
+    function ballotRef(questionId) {
+      return fb.doc(db, 'polls', POLL_ID, 'votes', `${myUid}_${questionId}`);
+    }
+
+    function showOverlay(show) {
+      welcomeOverlay.classList.toggle('hidden', !show);
+    }
+
+    function updateConnectionStatus(connected, message = '') {
+      connectionStatus.classList.toggle('online', connected);
+      connectionStatus.classList.toggle('offline', !connected);
+      connectionStatus.querySelector('.status-text').textContent =
+        message || (connected ? '已安全連線' : '未連接 Firebase');
+    }
+
+    async function initFirebase() {
+      try {
+        fb = await loadFirebaseSdk();
+        const app = fb.initializeApp(FIREBASE_CONFIG);
+
+        // ⚠️ 必須在 getFirestore／getAuth 之前，否則最早幾個請求會不帶 App Check
+        // token 就送出去；專案若已開 Enforce，那些請求會被擋，錯誤看起來像規則問題
+        setupAppCheck(app);
+
+        db = fb.getFirestore(app);
+        auth = fb.getAuth(app);
+
+        updateConnectionStatus(false, '連線安全驗證中...');
+
+        const credential = await fb.signInAnonymously(auth);
+        myUid = credential.user.uid;
+        console.log('Firebase Anonymous Auth Success. UID:', myUid);
+
+        attachVotesListener();
+      } catch (error) {
+        console.error('Firebase Auth/Init error:', error);
+        updateConnectionStatus(false, '驗證失敗，請確認匿名登入已啟用');
+        showOverlay(true);
+      }
+    }
+
+    function setupAppCheck(app) {
+      if (!RECAPTCHA_SITE_KEY) {
+        console.warn('App Check 未啟用：RECAPTCHA_SITE_KEY 尚未填入。');
+        return;
+      }
+      if (!APP_CHECK_HOSTS.includes(location.hostname)) {
+        console.warn(`App Check 未啟用：${location.hostname || 'file://'} 不在 APP_CHECK_HOSTS 清單中（本機預覽為正常現象）。`);
+        return;
+      }
+      fb.initializeAppCheck(app, {
+        provider: new fb.ReCaptchaV3Provider(RECAPTCHA_SITE_KEY),
+        isTokenAutoRefreshEnabled: true
+      });
+      console.log('App Check enabled.');
+    }
+
+    function attachVotesListener() {
+      if (unsubscribe) { unsubscribe(); unsubscribe = null; }
+
+      unsubscribe = fb.onSnapshot(votesCollection(), (snapshot) => {
+        const rows = [];
+        snapshot.forEach((docSnap) => {
+          const data = docSnap.data();
+          rows.push({
+            question: data.question,
+            option: data.option,
+            uid: data.uid,
+            // serverTimestamp() 在本地快照裡會短暫是 null，累積趨勢圖先略過這筆，
+            // 下一次快照就會補上
+            at: data.updated_at && typeof data.updated_at.toMillis === 'function'
+              ? data.updated_at.toMillis()
+              : null
+          });
+        });
+
+        applyBallots(rows);
+        updateConnectionStatus(true, '同步中 (安全連線)');
+        showOverlay(false);
+      }, (error) => {
+        console.error('Firestore connection error:', error);
+        updateConnectionStatus(false, '資料庫存取被拒');
+        showOverlay(true);
+      });
+    }
+
+    // Firestore 監聽與離線示範模式共用
+    function applyBallots(rows) {
+      ballots = rows;
+      tally = {};
+      myVotes = {};
+
+      rows.forEach((row) => {
+        if (!row.question || !row.option) return;
+        if (!tally[row.question]) tally[row.question] = {};
+        tally[row.question][row.option] = (tally[row.question][row.option] || 0) + 1;
+        if (row.uid === myUid) myVotes[row.question] = row.option;
+      });
+
+      renderAll();
+    }
+
+    // =======================================================================
+    // 投票
+    // =======================================================================
+
+    function isReady() {
+      return DEMO_MODE || !!(db && auth && auth.currentUser);
+    }
+
+    async function castVote(q, opt) {
+      if (!isReady()) {
+        showToast('資料庫連線尚未建立或驗證失敗，無法投票。', 'error');
+        return;
+      }
+
+      const buttons = QUESTIONS.find((item) => item.id === q.id).options
+        .map((o) => document.getElementById(`opt-${q.id}-${o.id}`));
+      buttons.forEach((b) => { if (b) b.disabled = true; });
+
+      const takingBack = myVotes[q.id] === opt.id;
+
+      try {
+        if (DEMO_MODE) {
+          demoVote(q.id, takingBack ? null : opt.id);
+        } else if (takingBack) {
+          await fb.deleteDoc(ballotRef(q.id));
+        } else {
+          // 一人一題一份文件：改投票就是覆寫自己那份，不會有多人搶寫同一份的熱點
+          await fb.setDoc(ballotRef(q.id), {
+            question: q.id,
+            option: opt.id,
+            uid: myUid,
+            updated_at: fb.serverTimestamp()
+          });
+        }
+        showToast(takingBack ? '已收回這一票' : `已投給「${opt.label}」`, 'success', 2200);
+      } catch (error) {
+        console.error('Failed to cast vote:', error);
+        showToast('投票失敗：' + error.message, 'error', 6000);
+      } finally {
+        buttons.forEach((b) => { if (b) b.disabled = false; });
+      }
+    }
+
+    // =======================================================================
+    // 離線示範模式（只在本機）
+    // =======================================================================
+
+    // key -> { question, option, uid, at }，形狀與 Firestore 的 votes 文件一致
+    const demoBallots = new Map();
+
+    function initDemoMode() {
+      myUid = DEMO_UID;
+
+      // 造一點假票，讓圖表在本機也有東西可看（時間往回推，趨勢圖才畫得出來）
+      const now = Date.now();
+      QUESTIONS.forEach((q, qi) => {
+        q.options.forEach((opt, oi) => {
+          const fake = ((qi + 1) * 3 + (q.options.length - oi) * 2) % 7 + 1;
+          for (let i = 0; i < fake; i++) {
+            const uid = `demo-${q.id}-${opt.id}-${i}`;
+            demoBallots.set(`${uid}_${q.id}`, {
+              question: q.id,
+              option: opt.id,
+              uid,
+              at: now - (fake - i) * 60000 - oi * 15000
+            });
+          }
+        });
+      });
+
+      demoBanner.classList.remove('hidden');
+      updateConnectionStatus(true, '離線示範模式（假資料）');
+      showOverlay(false);
+      demoEmit();
+
+      console.info(`離線示範模式已啟用（${location.hostname || 'file://'}）。管理密碼為「${DEMO_ADMIN_PASSWORD}」，資料只存在這個分頁裡。`);
+    }
+
+    function demoEmit() {
+      applyBallots(Array.from(demoBallots.values()));
+    }
+
+    function demoVote(questionId, optionId) {
+      const key = `${DEMO_UID}_${questionId}`;
+      if (optionId === null) {
+        demoBallots.delete(key);
+      } else {
+        demoBallots.set(key, { question: questionId, option: optionId, uid: DEMO_UID, at: Date.now() });
+      }
+      demoEmit();
+    }
+
+    function demoResetAll(password) {
+      if (password !== DEMO_ADMIN_PASSWORD) {
+        const error = new Error('密碼錯誤');
+        error.code = 'permission-denied';
+        throw error;
+      }
+      const deleted = demoBallots.size;
+      demoBallots.clear();
+      demoEmit();
+      return deleted;
+    }
+
+    // =======================================================================
+    // 一鍵重置投票（管理員）
+    // =======================================================================
+
+    function showAdminModal(show) {
+      if (show) {
+        adminError.classList.add('hidden');
+        adminError.textContent = '';
+        adminPassword.value = '';
+        openModal(adminModal, adminPassword, dismissAdminModal);
+      } else {
+        closeModal();
+        // 對話框關掉後不要讓密碼留在 DOM 裡
+        adminPassword.value = '';
+      }
+    }
+
+    function dismissAdminModal() {
+      // 清除進行中不可中斷
+      if (adminSubmit.disabled) return;
+      showAdminModal(false);
+    }
+
+    function setAdminBusy(busy) {
+      adminSubmit.disabled = busy;
+      adminCancel.disabled = busy;
+      adminSubmit.querySelector('span').textContent = busy ? '清除中...' : '確認清空票數';
+    }
+
+    resetBtn.addEventListener('click', () => {
+      if (!isReady()) {
+        showToast('資料庫連線尚未建立或驗證失敗，無法操作。', 'error');
+        return;
+      }
+      showAdminModal(true);
+    });
+
+    adminCancel.addEventListener('click', dismissAdminModal);
+    adminModal.addEventListener('click', (e) => { if (e.target === adminModal) dismissAdminModal(); });
+
+    adminForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+
+      const password = adminPassword.value.trim();
+      if (!password) return;
+
+      adminError.classList.add('hidden');
+      setAdminBusy(true);
+
+      try {
+        const deleted = DEMO_MODE ? demoResetAll(password) : await runAdminReset(password);
+
+        setAdminBusy(false);
+        showAdminModal(false);
+        showToast(deleted === 0 ? '這份投票目前沒有任何票數。' : `已清空 ${deleted} 張票`, 'success');
+      } catch (error) {
+        console.error('Failed to reset poll:', error);
+        setAdminBusy(false);
+        adminError.textContent = error && error.code === 'permission-denied'
+          ? '密碼錯誤。'
+          : '清除失敗：' + (error && error.message ? error.message : '未知錯誤');
+        adminError.classList.remove('hidden');
+        adminPassword.value = '';
+        adminPassword.focus();
+      }
+    });
+
+    async function runAdminReset(password) {
+      const tempAuthRef = fb.doc(db, 'admin_auth', myUid);
+
+      try {
+        // 只寫雜湊；明文不離開瀏覽器，資料庫也不存明文
+        await fb.setDoc(tempAuthRef, { passwordHash: await sha256Hex(password) });
+
+        let deleted = 0;
+
+        // 分批刪：單次 batch 最多 BATCH_LIMIT 個操作
+        while (true) {
+          const snapshot = await fb.getDocs(fb.query(votesCollection(), fb.limit(BATCH_LIMIT)));
+          if (snapshot.empty) break;
+
+          const batch = fb.writeBatch(db);
+          snapshot.forEach((docSnap) => batch.delete(docSnap.ref));
+          await batch.commit();
+
+          deleted += snapshot.size;
+          if (snapshot.size < BATCH_LIMIT) break;
+        }
+
+        return deleted;
+      } finally {
+        // 不論結果如何都要收掉臨時憑證
+        try {
+          await fb.deleteDoc(tempAuthRef);
+        } catch (cleanupError) {
+          console.error('Error cleaning up temp auth document:', cleanupError);
+        }
+      }
+    }
+
+    // crypto.subtle 只在安全環境（HTTPS 或 localhost）可用
+    async function sha256Hex(text) {
+      if (!globalThis.crypto || !globalThis.crypto.subtle) {
+        throw new Error('目前不是安全連線環境（需要 HTTPS），無法計算密碼雜湊');
+      }
+      const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
+      return Array.from(new Uint8Array(digest))
+        .map((b) => b.toString(16).padStart(2, '0'))
+        .join('');
+    }
+
+    // =======================================================================
+    // 啟動
+    // =======================================================================
+
+    if (typeof Chart !== 'undefined') {
+      Chart.defaults.color = '#94a3b8';
+      Chart.defaults.font.family = 'Outfit, "Noto Sans TC", sans-serif';
+    }
+
+    buildQuestionCards();
+    renderAll();
+
+    if (DEMO_MODE) {
+      initDemoMode();
+    } else {
+      initFirebase();
+    }
+  </script>
+</body>
+</html>

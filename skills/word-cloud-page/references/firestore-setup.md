@@ -15,23 +15,22 @@
 同一個專案目前有三組互相隔離的資料：
 
 ```
-words/<uid>_<詞>                       ← online-word-cloud 正式站（單一份，歷史包袱）
-decks/<slug>/wordcloud/<uid>_<詞>      ← html-slide-builder 簡報內嵌元件
-decks/<slug>/votes/<uid>_<題號>        ← html-slide-builder 簡報投票
+words/<uid>_<詞>                       ← interactive-web-builder 正式站（單一份，歷史包袱）
 clouds/<cloudId>/words/<uid>_<詞>      ← 本技能產生的文字雲頁 ★
+polls/<pollId>/votes/<uid>_<題號>      ← poll-page 技能產生的投票頁
 ```
 
-**這四個路徑的規則都不能互刪**。動 `/decks/` 的欄位或長度上限時，要同步改 `html-slide-builder/skill/references/firebase-config.md` 的程式碼。
+**這三條規則都不能互刪。**（2026-08-05 之前還有 `decks/<slug>/...`，那是簡報內嵌互動元件用的，該功能已整組移除、規則也已刪除。在舊文件看到 `decks/` 不要把規則加回來。）
 
 ## 為什麼是子集合，不是「每份新開一個 collection」
 
 安全規則的路徑片段**只能是完整字面值或完整萬用字元**，寫不出 `match /{cloudId}_words/{doc}` 這種部分比對。若真的每份文字雲開一個 top-level collection，就得每產生一份都回頭改 `firestore.rules` 再部署一次——而漏改的症狀是**寫入被預設拒絕**，且錯誤訊息看起來像密碼或登入問題。
 
-改成 `clouds/{cloudId}/words/{word}` 子集合後，一條規則涵蓋所有文字雲，**新增一份完全不必碰資料庫設定**。這與 `/decks/{slug}/` 當初的取捨完全相同。
+改成 `clouds/{cloudId}/words/{word}` 子集合後，一條規則涵蓋所有文字雲，**新增一份完全不必碰資料庫設定**。
 
 ## 必須部署的規則
 
-以下區塊必須存在於 `firestore.rules`（本技能的來源專案 `online-word-cloud` 已含）。它依賴同檔案裡的 `isSignedIn()` 與 `isAdmin()` 兩個共用函式：
+以下區塊必須存在於 `firestore.rules`（本技能的來源專案 `interactive-web-builder` 已含）。它依賴同檔案裡的 `isSignedIn()` 與 `isAdmin()` 兩個共用函式：
 
 ```js
 // 管理者授權：比對使用者臨時憑證與 config/admin 的密碼雜湊。
@@ -69,9 +68,9 @@ match /clouds/{cloudId}/words/{word} {
 - **`hasOnly()` 與長度上限是防灌爆的關鍵**——沒有它，任何人都能往單份文件塞到 1 MiB 上限。改任一邊都要同步改頁面裡的 `MAX_WORD_LENGTH`（100）。
 - **文件 ID 固定為 `<uid>_<詞>`**，且規則會驗證 `uid + '_' + text == word`。同一人重複送同一個詞只會累加自己那份，「改別人的資料」在規則層就不可能。
 - `timestamp == request.time` 逼前端用 `serverTimestamp()`，客戶端無法偽造時間。
-- **管理密碼是整個專案共用的一組**（`config/admin`），一組密碼可以清空任何一份文字雲。要換密碼跑 `online-word-cloud/tools/set-admin-password.mjs`，把輸出的雜湊填進 `config/admin.passwordHash`。
+- **管理密碼是整個專案共用的一組**（`config/admin`），一組密碼可以清空任何一份文字雲。要換密碼跑 `interactive-web-builder/tools/set-admin-password.mjs`，把輸出的雜湊填進 `config/admin.passwordHash`。
 
-部署方式（在 `online-word-cloud` 專案目錄）：
+部署方式（在 `interactive-web-builder` 專案目錄）：
 
 ```bash
 firebase deploy --only firestore:rules
@@ -101,3 +100,4 @@ Enforce 已開啟，**任何前端要讀寫這個專案，都必須先 `initiali
 
 - 看某份文字雲的資料：Firebase Console → Firestore → `clouds` → `<cloudId>` → `words`
 - 整份刪掉：Console 裡刪 `clouds/<cloudId>` 這個文件的子集合，或在頁面上用「一鍵刪除全部」（會清空該 `cloudId` 底下的 `words`，不影響其他文字雲）
+

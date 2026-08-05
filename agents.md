@@ -1,9 +1,16 @@
-# online-word-cloud（專案藍圖）
+# interactive-web-builder（專案藍圖）
 
 > 本檔為跨 Agent 通用的專案藍圖（AGENTS.md 開放標準）。任何 Agent 的每個 session 都應先讀本檔＋`handoff.md`。
+>
+> 本專案原名 `online-word-cloud`，2026-08-05 因範圍擴大為「聽眾即時互動網頁的製作」而更名。
 
 ## 專案簡介
-提供即時協作的線上文字雲服務（Cloudify），使用者輸入段落或字詞後自動解析詞頻，並透過 Firebase Firestore 即時同步渲染在畫布上。
+製作聽眾即時互動網頁。包含兩部分：
+
+1. **Cloudify 文字雲正式站**（repo 根目錄）：使用者輸入段落或字詞後自動解析詞頻，透過 Firebase Firestore 即時同步渲染在畫布上。
+2. **`skills/` 底下兩個跨專案技能**：`word-cloud-page`（文字雲頁）與 `poll-page`（投票頁＋統計圖表），給定參數就產生一份可獨立部署的單檔 HTML，供其他專案（例如 `html-slide-builder` 的簡報）放 QR Code 連過去。
+
+三者共用同一個 Firebase 專案 `word-cloud-c0bfe` 與同一份 `firestore.rules`，各走各的路徑。**產出的互動頁放在呼叫端專案的資料夾**，本 repo 只留模板。
 
 ## 關鍵時程
 - 2026-06-07：專案初始化與 GitHub Actions / GitHub Pages 上線部署
@@ -11,7 +18,9 @@
 - 2026-07-26：UI 與功能細節優化；新增 localhost 離線示範模式，解決本機連不到 Firebase 的開發困境
 - 2026-08-05：`firestore.rules` 新增 `/decks/` 區塊，把 Firebase 專案分享給 `html-slide-builder` 的簡報互動元件使用
 - 2026-08-05：Cloud Firestore 開啟 App Check 強制執行；Metrics 顯示 92% verified（38 筆中 3 筆 invalid 為自動化瀏覽器所致）
-- 2026-08-05：本專案的文字雲頁流程封裝成 `word-cloud-page` 技能（`skill/`），供其他專案產生獨立部署的文字雲頁；`firestore.rules` 新增 `/clouds/{cloudId}/words/` 區塊
+- 2026-08-05：本專案的文字雲頁流程封裝成 `word-cloud-page` 技能，供其他專案產生獨立部署的文字雲頁；`firestore.rules` 新增 `/clouds/{cloudId}/words/` 區塊
+- 2026-08-05：新增 `poll-page` 技能（即時投票頁＋Chart.js 統計圖表）；`firestore.rules` 新增 `/polls/{pollId}/votes/` 區塊；技能改放在 `skills/<技能名>/`
+- 2026-08-05：`html-slide-builder` 移除簡報內嵌的文字雲與投票，改呼叫本專案技能；`/decks/` 兩條規則隨之刪除；專案由 `online-word-cloud` 更名為 `interactive-web-builder`
 
 ## 目標與路線圖
 - [x] 階段一：建立線上文字雲核心 HTML/CSS/JS 功能與視覺美化
@@ -25,6 +34,8 @@
 - [ ] 階段九：把階段七、八的改動推上 GitHub Pages，實測正式 Firebase 路徑（送出／刪除／批次清空）
 - [ ] 階段十：UI 持續優化（例如敏感詞清單管理、匯出文字雲圖片）
 - [x] 階段十一：把文字雲頁流程封裝成 `word-cloud-page` 技能，資料改走 `clouds/{cloudId}/words/` 子集合，一份規則涵蓋所有新產生的文字雲
+- [x] 階段十二：新增 `poll-page` 技能（`polls/{pollId}/votes/`），投票頁附即時圓餅／甜甜圈／長條／累積趨勢圖表
+- [ ] 階段十三：兩個技能的正式 Firebase 路徑實測（產生第一份文字雲頁與投票頁，由使用者本人在一般瀏覽器操作）
 
 ## 資料夾結構
 - `app.js`：核心邏輯與 Firestore 即時監聽/過濾處理
@@ -32,7 +43,8 @@
 - `index.css`：美化與主題樣式設計
 - `firestore.rules`：Firestore 資料庫存取與格式驗證規則
 - `tools/set-admin-password.mjs`：產生管理密碼與 SHA-256 雜湊
-- `skill/`：`word-cloud-page` 技能原始檔（`SKILL.md`、`assets/word-cloud-page.html` 單檔模板、`references/firestore-setup.md`）
+- `skills/word-cloud-page/`：文字雲頁技能原始檔（`SKILL.md`、`assets/word-cloud-page.html` 單檔模板、`references/firestore-setup.md`）
+- `skills/poll-page/`：投票頁技能原始檔（同樣結構，模板為 `assets/poll-page.html`）
 - `.firebaserc` / `firebase.json`：Firebase 專案配置
 - `.github/workflows/deploy.yml`：GitHub Actions 部署腳本
 - `agents.md`：專案藍圖（本檔）
@@ -43,8 +55,8 @@
 | 層級 | 平台 | 位置 | 讀取時機 |
 |------|------|------|---------|
 | L1 | 本地（GDrive） | `agents.md`＋`handoff.md` | 每個 session |
-| L2 | GitHub | changyiwu/online-word-cloud | 指定時 |
-| L3 | Obsidian | online-word-cloud/專案工作流程.md | 有需要時 |
+| L2 | GitHub | changyiwu/interactive-web-builder | 指定時 |
+| L3 | Obsidian | interactive-web-builder/專案工作流程.md | 有需要時 |
 
 ## 三個檔案的職責（依「時效性」分家，不是依「詳細程度」）
 
@@ -68,10 +80,9 @@
 - **管理密碼的暴力破解問題沒有根治**：安全規則沒有速率限制，任何人都能匿名登入後反覆嘗試刪除來猜密碼。根治要把權限判定移到 Cloud Functions（需 Blaze 方案）。現行做法只是提高成本，不是消除弱點——**這是已知且接受的風險**
 - **換網域時要同步更新四處**：`app.js` 的 `APP_CHECK_HOSTS`、reCAPTCHA 主控台網域清單、Firebase Console 的 App Check 設定、Firebase API key 的 referrer 限制。漏改會**靜默失敗**（未 Enforce 時完全無感）
 - GitHub Pages 設定為 `build_type: workflow`（與 `deploy.yml` 一致）；`.claude/launch.json` 是本機預覽設定（`python -m http.server 5173`），目前在版控內，不需要可 `git rm --cached`
-- **⚠️ `firestore.rules` 裡的 `/decks/{slug}/...` 兩個 match 區塊不是孤兒規則，不要刪。**它們是 `html-slide-builder` 專案（`我的雲端硬碟/agents/html-slide-builder`）的簡報互動元件在用的——本專案與它共用同一個 Firebase 專案 `word-cloud-c0bfe`，各走各的路徑，`/decks/` 與 `/words/` 完全隔離。刪掉會讓所有簡報的文字雲與投票**靜默失效**（寫入被 Firestore 預設拒絕）。同理，改動 `/decks/` 的欄位或長度上限時，要同步改對方 `skill/references/firebase-config.md` 的程式碼
-
-- **⚠️ `firestore.rules` 的 `/clouds/{cloudId}/words/` 區塊是 `word-cloud-page` 技能的生命線，不要刪。**技能每產生一份文字雲頁就給一個 `cloudId`，資料落在該子集合；一條規則涵蓋全部，所以新增文字雲不必改規則。刪掉會讓**所有已發出去的文字雲頁同時靜默失效**。欄位規格（`hasOnly`、長度與次數上限）與 `skill/assets/word-cloud-page.html` 的 `MAX_WORD_LENGTH` 必須一致，改一邊就要改另一邊
-- **技能模板與本專案的 `index.html`／`app.js` 是兩份各自獨立的程式碼**，只是同源。本站修 bug 不會自動流到技能模板，反之亦然；改動若屬於「兩邊都該有」的性質（例如安全性修正），要明確地各改一次。技能改完別忘了跑 `/sync-skills` 才會更新到各 agent 的全域技能目錄
+- **`/decks/{slug}/...` 兩條規則已於 2026-08-05 刪除**（`html-slide-builder` 的簡報內嵌互動元件已整組移除，改呼叫本專案技能）。**不要因為在舊文件或舊簡報看到 `decks/` 就把規則加回來**——那些是歷史殘留，正確做法是改用 `clouds/` 或 `polls/` 的獨立互動頁
+- **⚠️ `firestore.rules` 的 `/clouds/{cloudId}/words/` 與 `/polls/{pollId}/votes/` 兩個區塊是 `skills/` 底下兩個技能的生命線，不要刪。**技能每產生一份頁面就給一個 id，資料落在對應子集合；一條規則涵蓋全部，所以新增頁面不必改規則、不必再部署。刪掉會讓**所有已經發出去的文字雲頁／投票頁同時靜默失效**。規則裡的欄位規格（`hasOnly`、長度與次數上限）與 `skills/*/assets/*.html` 的對應常數必須一致，改一邊就要改另一邊
+- **技能模板與本專案的 `index.html`／`app.js` 是各自獨立的程式碼**，只是同源。本站修 bug 不會自動流到技能模板，反之亦然；改動若屬於「兩邊都該有」的性質（例如安全性修正），要明確地各改一次。技能改完別忘了跑 `/sync-skills` 才會更新到各 agent 的全域技能目錄
 
 ## 工作約定
 - 任何 Agent、任何電腦：**開工先讀 `handoff.md`，收工必更新 `handoff.md`**
