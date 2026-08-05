@@ -10,6 +10,7 @@
 - 2026-07-26：安全性強化；因原始碼曾含明文管理密碼，捨棄 23 個 commit 的歷史重建 repo
 - 2026-07-26：UI 與功能細節優化；新增 localhost 離線示範模式，解決本機連不到 Firebase 的開發困境
 - 2026-08-05：`firestore.rules` 新增 `/decks/` 區塊，把 Firebase 專案分享給 `html-slide-builder` 的簡報互動元件使用
+- 2026-08-05：Cloud Firestore 開啟 App Check 強制執行；Metrics 顯示 92% verified（38 筆中 3 筆 invalid 為自動化瀏覽器所致）
 
 ## 目標與路線圖
 - [x] 階段一：建立線上文字雲核心 HTML/CSS/JS 功能與視覺美化
@@ -60,6 +61,7 @@
 - **本機 `python -m http.server` 沒送 Cache-Control**，瀏覽器會拿舊的 `app.js`／`index.css`。改完沒反應時先用 `fetch(url, {cache:'reload'})` 或硬重新整理，**別誤判成程式沒生效**
 - **桌機版（≥901px）用 `height: 100vh` 把佈局框在視窗內**，排行榜靠自己的捲軸。改左欄內容（例如加高 textarea）會直接壓縮排行榜可視高度，動之前先確認 `.stat-container` 沒被壓到 0。視窗矮於 800px 時整頁小幅捲動，是刻意的降級
 - **App Check 的 Enforce 已於 Cloud Firestore 開啟**：任何前端要讀寫這個 Firebase 專案，都必須先 `initializeAppCheck()` 換到 token，**而且要在 `getFirestore()`／`getAuth()` 之前**，否則最早幾個請求不帶 token 會被擋。症狀是全部 `PERMISSION_DENIED`，很容易誤判成安全規則的問題——判斷方式是規則在 Playground 測起來 allow、實際請求卻回 403。site key 與網域見 `app.js` 的 `RECAPTCHA_SITE_KEY`／`APP_CHECK_HOSTS`
+- **不要用瀏覽器工具驗證正式站，會誤判成故障。**Browser pane／Playwright 等自動化瀏覽器的 reCAPTCHA v3 分數極低，App Check 換 token 會被回 **403**，接著 Firestore 一律 `permission-denied`、畫面卡在「連線驗證中…」。**那是 Enforce 正常運作，不是線上壞掉**——它擋的就是這種 client。判斷正式站健康與否**只看 Firebase Console → App Check → Metrics**：verified 占絕大多數即正常（少數 invalid 通常就是自己剛才那幾次自動化載入）。真要用自動化瀏覽器驗證，得先在 Console 註冊 debug token，那等於發永久通行證，僅限開發環境
 - **管理密碼的暴力破解問題沒有根治**：安全規則沒有速率限制，任何人都能匿名登入後反覆嘗試刪除來猜密碼。根治要把權限判定移到 Cloud Functions（需 Blaze 方案）。現行做法只是提高成本，不是消除弱點——**這是已知且接受的風險**
 - **換網域時要同步更新四處**：`app.js` 的 `APP_CHECK_HOSTS`、reCAPTCHA 主控台網域清單、Firebase Console 的 App Check 設定、Firebase API key 的 referrer 限制。漏改會**靜默失敗**（未 Enforce 時完全無感）
 - GitHub Pages 設定為 `build_type: workflow`（與 `deploy.yml` 一致）；`.claude/launch.json` 是本機預覽設定（`python -m http.server 5173`），目前在版控內，不需要可 `git rm --cached`
