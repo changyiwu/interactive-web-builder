@@ -16,7 +16,7 @@
 - [x] 階段二：串接 Firebase Firestore 即時同步與權限安全規則
 - [x] 階段三：新增刪除單一字詞、不雅字詞敏感詞過濾功能
 - [x] 階段四：安全性強化——雜湊式管理授權、規則欄位與數值界線、App Check、git 歷史重建
-- [ ] 階段五：觀察 App Check 指標，確認多數請求已驗證後開啟 Firestore 強制執行
+- [x] 階段五：觀察 App Check 指標，確認多數請求已驗證後開啟 Firestore 強制執行
 - [ ] 階段六：實測「一鍵刪除全部」完整流程（會真的清空資料，需挑時機）
 - [x] 階段七：UI 與功能細節優化——固定配色、toast／確認框、排行榜全列、無障礙、桌機版滿版佈局
 - [x] 階段八：新增 localhost 離線示範模式，讓 UI 迭代不必每次推上線
@@ -59,7 +59,7 @@
 - **離線示範模式的判斷依據是 `app.js` 的 `DEMO_HOSTS`**（`localhost`／`127.0.0.1`／`file://`）；正式網域不在清單內，線上行為不受影響。此模式下管理密碼固定為 `demo`。要在本機測真實 Firebase，得先解除 API key 的 referrer 限制，再把 host 從 `DEMO_HOSTS` 拿掉
 - **本機 `python -m http.server` 沒送 Cache-Control**，瀏覽器會拿舊的 `app.js`／`index.css`。改完沒反應時先用 `fetch(url, {cache:'reload'})` 或硬重新整理，**別誤判成程式沒生效**
 - **桌機版（≥901px）用 `height: 100vh` 把佈局框在視窗內**，排行榜靠自己的捲軸。改左欄內容（例如加高 textarea）會直接壓縮排行榜可視高度，動之前先確認 `.stat-container` 沒被壓到 0。視窗矮於 800px 時整頁小幅捲動，是刻意的降級
-- **不要在觀察指標前就開 App Check 的 Enforce**，會立刻讓所有使用者無法讀寫
+- **App Check 的 Enforce 已於 Cloud Firestore 開啟**：任何前端要讀寫這個 Firebase 專案，都必須先 `initializeAppCheck()` 換到 token，**而且要在 `getFirestore()`／`getAuth()` 之前**，否則最早幾個請求不帶 token 會被擋。症狀是全部 `PERMISSION_DENIED`，很容易誤判成安全規則的問題——判斷方式是規則在 Playground 測起來 allow、實際請求卻回 403。site key 與網域見 `app.js` 的 `RECAPTCHA_SITE_KEY`／`APP_CHECK_HOSTS`
 - **管理密碼的暴力破解問題沒有根治**：安全規則沒有速率限制，任何人都能匿名登入後反覆嘗試刪除來猜密碼。根治要把權限判定移到 Cloud Functions（需 Blaze 方案）。現行做法只是提高成本，不是消除弱點——**這是已知且接受的風險**
 - **換網域時要同步更新四處**：`app.js` 的 `APP_CHECK_HOSTS`、reCAPTCHA 主控台網域清單、Firebase Console 的 App Check 設定、Firebase API key 的 referrer 限制。漏改會**靜默失敗**（未 Enforce 時完全無感）
 - GitHub Pages 設定為 `build_type: workflow`（與 `deploy.yml` 一致）；`.claude/launch.json` 是本機預覽設定（`python -m http.server 5173`），目前在版控內，不需要可 `git rm --cached`
