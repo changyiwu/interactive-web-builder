@@ -211,6 +211,105 @@ function askConfirm({ title, message, confirmText = '確定' }) {
 }
 
 // ---------------------------------------------------------------------------
+// 網址 QR Code：投影時讓學生掃描加入
+// ---------------------------------------------------------------------------
+
+const qrBtn = document.getElementById('qr-btn');
+const qrModal = document.getElementById('qr-modal');
+const qrFrame = document.getElementById('qr-frame');
+const qrUrlText = document.getElementById('qr-url');
+const qrCopyBtn = document.getElementById('qr-copy');
+const qrDownloadBtn = document.getElementById('qr-download');
+const qrCloseBtn = document.getElementById('qr-close');
+
+// 產生時的像素尺寸；實際顯示由 CSS 縮放，投影放大也不會糊
+const QR_PIXEL_SIZE = 520;
+
+// hash 只影響本頁捲動位置，不該進 QR
+function pageShareUrl() {
+  return location.href.split('#')[0];
+}
+
+function renderQrCode(url) {
+  if (typeof QRCode === 'undefined') {
+    throw new Error('QRCode 程式庫未載入');
+  }
+  qrFrame.innerHTML = '';
+  // eslint-disable-next-line no-new
+  new QRCode(qrFrame, {
+    text: url,
+    width: QR_PIXEL_SIZE,
+    height: QR_PIXEL_SIZE,
+    colorDark: '#0a0b10',
+    colorLight: '#ffffff',
+    correctLevel: QRCode.CorrectLevel.M
+  });
+}
+
+async function copyShareUrl() {
+  const url = pageShareUrl();
+  try {
+    if (!navigator.clipboard) throw new Error('clipboard API 不可用');
+    await navigator.clipboard.writeText(url);
+    showToast('已複製網址', 'success');
+  } catch (error) {
+    console.error('Failed to copy URL:', error);
+    showToast('瀏覽器不允許自動複製，請手動選取下方網址。', 'warn');
+  }
+}
+
+// 另存一張帶白色外框的圖，直接貼進簡報或講義也掃得到
+function downloadQrImage() {
+  const source = qrFrame.querySelector('canvas');
+  if (!source) {
+    showToast('QR Code 尚未產生，無法下載。', 'error');
+    return;
+  }
+
+  const margin = Math.round(source.width / 12);
+  const output = document.createElement('canvas');
+  output.width = source.width + margin * 2;
+  output.height = source.height + margin * 2;
+
+  const ctx = output.getContext('2d');
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, output.width, output.height);
+  ctx.drawImage(source, margin, margin);
+
+  const link = document.createElement('a');
+  link.download = 'word-cloud-qrcode.png';
+  link.href = output.toDataURL('image/png');
+  link.click();
+}
+
+function dismissQrModal() {
+  closeModal();
+}
+
+qrBtn.addEventListener('click', () => {
+  const url = pageShareUrl();
+  qrUrlText.textContent = url;
+
+  try {
+    renderQrCode(url);
+  } catch (error) {
+    // CDN 被擋掉時只是少了圖，網址與複製功能照常可用
+    console.error('Failed to render QR code:', error);
+    qrFrame.innerHTML = '';
+    showToast('QR Code 產生失敗（外部資源可能被封鎖），請改用「複製網址」。', 'error', 6000);
+  }
+
+  openModal(qrModal, qrCloseBtn, dismissQrModal);
+});
+
+qrCopyBtn.addEventListener('click', copyShareUrl);
+qrDownloadBtn.addEventListener('click', downloadQrImage);
+qrCloseBtn.addEventListener('click', dismissQrModal);
+qrModal.addEventListener('click', (e) => {
+  if (e.target === qrModal) dismissQrModal();
+});
+
+// ---------------------------------------------------------------------------
 // Canvas & word cloud rendering
 // ---------------------------------------------------------------------------
 

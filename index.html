@@ -11,6 +11,8 @@
   <link rel="stylesheet" href="index.css">
   <!-- WordCloud2.js CDN -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/wordcloud2.js/1.2.2/wordcloud2.min.js"></script>
+  <!-- QRCode.js CDN（只有按下「網址 QR Code」時才會用到，所以 defer） -->
+  <script defer src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 </head>
 <body>
   <div class="app-container">
@@ -62,6 +64,10 @@
       <section class="glass-card cloud-card">
         <div class="card-header">
           <h2>文字雲畫布</h2>
+          <button type="button" id="qr-btn" class="ghost-btn compact-btn" title="顯示這個頁面網址的 QR Code">
+            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1"></rect><rect x="14" y="3" width="7" height="7" rx="1"></rect><rect x="3" y="14" width="7" height="7" rx="1"></rect><path d="M14 14h3v3h-3z"></path><path d="M21 14v3"></path><path d="M14 21h7"></path></svg>
+            <span>網址 QR Code</span>
+          </button>
         </div>
         <div class="canvas-container">
           <canvas id="word-cloud-canvas" role="img" aria-label="文字雲畫布"></canvas>
@@ -132,6 +138,25 @@
       <div class="modal-actions">
         <button type="button" id="confirm-cancel" class="ghost-btn"><span>取消</span></button>
         <button type="button" id="confirm-ok" class="danger-btn"><span>確定</span></button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 網址 QR Code 對話框 -->
+  <div id="qr-modal" class="modal-overlay hidden">
+    <div class="glass-card modal-card qr-card" role="dialog" aria-modal="true" aria-labelledby="qr-modal-title" aria-describedby="qr-modal-desc">
+      <h2 id="qr-modal-title">掃描加入文字雲</h2>
+      <p id="qr-modal-desc" class="subtitle">用手機相機掃描下方 QR Code，就能直接開啟這個頁面一起輸入字詞。</p>
+
+      <div id="qr-frame" class="qr-frame">
+        <!-- QR Code canvas 由 JS 產生 -->
+      </div>
+      <p id="qr-url" class="qr-url"></p>
+
+      <div class="modal-actions">
+        <button type="button" id="qr-copy" class="ghost-btn"><span>複製網址</span></button>
+        <button type="button" id="qr-download" class="ghost-btn"><span>下載圖片</span></button>
+        <button type="button" id="qr-close" class="primary-btn"><span>關閉</span></button>
       </div>
     </div>
   </div>
