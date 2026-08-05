@@ -65,5 +65,49 @@ service cloud.firestore {
       allow delete: if isSignedIn()
         && (resource.data.uid == request.auth.uid || isAdmin());
     }
+
+    // ---------- html-slide-builder 簡報互動 ----------
+    // 與上方 /words/ 完全隔離，共用同一個 Firebase 專案但各走各的路徑。
+    // 用子集合而非 <slug>_wordcloud 扁平命名，是因為安全規則的路徑片段
+    // 只能是完整字面值或完整萬用字元，寫不出 match /{slug}_wordcloud/。
+
+    // 文件 ID 固定為 <uid>_<內容>，同一人重複送出只會覆寫自己那份，
+    // 天然防洗版，也讓「改別人的資料」在規則層就不可能。
+
+    match /decks/{slug}/wordcloud/{entry} {
+      allow read: if isSignedIn();
+
+      allow create, update: if isSignedIn()
+        && slug.size() <= 40
+        && request.resource.data.keys().hasOnly(['word', 'uid', 'created_at'])
+        && request.resource.data.word is string
+        && request.resource.data.word.size() > 0
+        && request.resource.data.word.size() <= 20
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.created_at == request.time
+        && request.resource.data.uid + '_' + request.resource.data.word == entry;
+
+      allow delete: if isSignedIn() && resource.data.uid == request.auth.uid;
+    }
+
+    // 一人一題一份文件：改投票是覆寫自己那份，不會有多人搶寫同一份文件的熱點
+    match /decks/{slug}/votes/{ballot} {
+      allow read: if isSignedIn();
+
+      allow create, update: if isSignedIn()
+        && slug.size() <= 40
+        && request.resource.data.keys().hasOnly(['question', 'option', 'uid', 'updated_at'])
+        && request.resource.data.question is string
+        && request.resource.data.question.size() > 0
+        && request.resource.data.question.size() <= 40
+        && request.resource.data.option is string
+        && request.resource.data.option.size() > 0
+        && request.resource.data.option.size() <= 40
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.updated_at == request.time
+        && request.resource.data.uid + '_' + request.resource.data.question == ballot;
+
+      allow delete: if isSignedIn() && resource.data.uid == request.auth.uid;
+    }
   }
 }
