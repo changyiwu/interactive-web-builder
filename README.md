@@ -5,7 +5,7 @@
 | 技能 | 產出 | 資料位置 |
 |------|------|---------|
 | `word-cloud-page` | 即時文字雲頁（自動斷詞、詞頻、排行榜、管理員清空） | `clouds/<cloudId>/words/` |
-| `poll-page` | 即時投票頁（圓餅／甜甜圈／長條／累積趨勢圖表） | `polls/<pollId>/votes/` |
+| `poll-page` | 即時投票頁（圓餅／長條／折線／雷達圖表） | `polls/<pollId>/votes/` |
 
 兩者共用同一個 Firebase 專案與同一份 `firestore.rules`，各走各的路徑，互不干擾；**每產生一份頁面就給一個 id，新增時不必改規則、不必重新部署**。
 
@@ -20,7 +20,7 @@
 
 - **即時同步**：Firestore 實時監聽，任何人的輸入或投票會在所有裝置上瞬間更新。
 - **自動詞頻分析**：中英文自動斷詞計數，中文允許單字、英文大小寫正規化，含不雅字詞過濾。
-- **統計圖表**：投票頁用 Chart.js 畫圓餅／甜甜圈／長條／累積趨勢，現場可切換。
+- **統計圖表**：投票頁用 Chart.js 畫圓餅／長條／折線／雷達四種圖，橫軸一律是選項，現場可切換。
 - **精美視覺**：Outfit ＋ Noto Sans TC，漸層配色與深色毛玻璃（Glassmorphism）風格，桌機／平板／手機三段式版面。
 - **安全連線**：匿名登入 ＋ App Check（reCAPTCHA v3）＋ 嚴格的 Firestore 安全規則；管理操作只送 SHA-256 雜湊。
 - **自動部署**：GitHub Actions，push 到 `main` 就部署到 GitHub Pages。
@@ -61,7 +61,7 @@ Firebase API key 設了 referrer 限制，**本機一定連不到 Firebase**
 
 真正要驗證 Firestore 同步、安全規則或 App Check，仍然只能推上 GitHub Pages 實測。
 
-### 2. Firebase 雲端設定步驟
+### 3. Firebase 雲端設定步驟
 
 若要使用自訂的 Firebase 專案，請遵循以下設定：
 
@@ -85,7 +85,7 @@ Firebase API key 設了 referrer 限制，**本機一定連不到 Firebase**
    };
    ```
 
-### 3. 管理密碼設定
+### 4. 管理密碼設定
 
 「一鍵刪除全部」與「一鍵重置投票」需要管理密碼。安全規則只比對 SHA-256 雜湊，
 Firestore 內不儲存明文，前端也只送出雜湊。
@@ -107,7 +107,7 @@ Firebase Console → Firestore Database → `config` → `admin`：
 > 刪除操作來試密碼。密碼長度就是這道防線的強度，短密碼會被腳本在數分鐘內試出來。
 > 要根治需要把權限判定移到 Cloud Functions（需啟用 Blaze 方案）。
 
-### 4. App Check（reCAPTCHA v3）
+### 5. App Check（reCAPTCHA v3）
 
 每個互動頁裡的 `RECAPTCHA_SITE_KEY` 為 reCAPTCHA v3 網站金鑰（**公開金鑰，可 commit**，
 目前是 `6LfHM2Ut…`）。對應的 secret key 只填在 Firebase Console → App Check，**不可進入 repo**。
@@ -122,7 +122,7 @@ Firebase Console 的 App Check 設定。
 開啟強制執行（Enforcement）前，請先在 Console 觀察 App Check 指標，確認已驗證
 請求佔絕大多數，否則會立刻讓所有使用者無法讀寫。
 
-### 5. 自動部署至 GitHub Pages
+### 6. 自動部署至 GitHub Pages
 
 本專案使用 GitHub Actions 進行持續整合與部署。
 
@@ -160,3 +160,5 @@ interactive-web-builder/
 ## 🔒 授權條款
 
 本專案採用 MIT 授權條款。詳細資訊請參閱專案授權聲明。
+
+

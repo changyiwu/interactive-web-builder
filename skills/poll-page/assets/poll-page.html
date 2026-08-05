@@ -608,7 +608,7 @@
 
     // 題目。每題的 id 就是安全規則裡的 question（最長 40 字），
     // 同一頁裡不可重複；選項的 id 也最長 40 字。
-    // chart 預設圖表：'pie' | 'doughnut' | 'bar' | 'line'
+    // chart 預設圖表：'pie' | 'bar' | 'line' | 'radar'
     const QUESTIONS = {{QUESTIONS_JSON}};
 
     // 共用的 Firebase 專案。Web API key 是識別碼不是憑證，可以公開；
@@ -646,9 +646,9 @@
 
     const CHART_TYPES = [
       { id: 'pie', label: '圓餅圖' },
-      { id: 'doughnut', label: '甜甜圈' },
       { id: 'bar', label: '長條圖' },
-      { id: 'line', label: '累積趨勢' }
+      { id: 'line', label: '折線圖' },
+      { id: 'radar', label: '雷達圖' }
     ];
 
     // =======================================================================
@@ -665,8 +665,6 @@
     let tally = {};
     // 題號 -> 我投的選項 id
     let myVotes = {};
-    // 原始票據（累積趨勢圖用）：{ question, option, uid, at }
-    let ballots = [];
 
     const charts = {};        // 題號 -> Chart 實例
     const chartTypes = {};    // 題號 -> 目前顯示的圖表類型
@@ -710,10 +708,6 @@
         // prefers-reduced-motion 會停用動畫，animationend 就不會觸發
         setTimeout(() => toast.remove(), 600);
       }, duration);
-    }
-
-    function formatClock(ms) {
-      return new Date(ms).toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit' });
     }
 
     // =======================================================================
@@ -988,31 +982,13 @@
       });
     }
 
-    // 累積趨勢：把票據依時間排序，逐票累加。使用者改投票時只會留下最後一次的
-    // 時間，所以這是「目前這些票是何時進來的」，不是完整的投票歷史。
-    function cumulativeSeries(q) {
-      const rows = ballots
-        .filter((b) => b.question === q.id && b.at)
-        .sort((a, b) => a.at - b.at);
-
-      const running = {};
-      const data = {};
-      q.options.forEach((opt) => { running[opt.id] = 0; data[opt.id] = [0]; });
-      const labels = ['開始'];
-
-      rows.forEach((row) => {
-        if (running[row.option] === undefined) return; // 選項已被改掉的舊票
-        running[row.option] += 1;
-        labels.push(formatClock(row.at));
-        q.options.forEach((opt) => data[opt.id].push(running[opt.id]));
-      });
-
-      return { labels, data };
-    }
-
+    // 四種圖表都畫同一份資料：橫軸（或每個扇形／頂點）＝選項，數值＝票數。
+    // 顏色依選項順序取用，四種圖之間顏色一致，切換時對得起來。
     function chartConfig(q) {
       const type = chartTypes[q.id];
       const counts = tally[q.id] || {};
+      const labels = q.options.map((opt) => opt.label);
+      const data = q.options.map((opt) => counts[opt.id] || 0);
       const colors = q.options.map((_, i) => CHART_COLORS[i % CHART_COLORS.length]);
 
       const common = {
@@ -1024,60 +1000,79 @@
         }
       };
 
-      if (type === 'line') {
-        const series = cumulativeSeries(q);
-        return {
-          type: 'line',
-          data: {
-            labels: series.labels,
-            datasets: q.options.map((opt, i) => ({
-              label: opt.label,
-              data: series.data[opt.id],
-              borderColor: colors[i],
-              backgroundColor: colors[i],
-              tension: 0.3,
-              pointRadius: 2,
-              borderWidth: 2,
-              fill: false
-            }))
-          },
-          options: {
-            ...common,
-            scales: {
-              x: { ticks: { color: '#94a3b8' }, grid: { color: 'rgba(255,255,255,0.06)' } },
-              y: { beginAtZero: true, ticks: { color: '#94a3b8', precision: 0 }, grid: { color: 'rgba(255,255,255,0.06)' } }
-            }
-          }
-        };
-      }
+      // 只有一組資料時圖例只會顯示「票數」，沒有資訊量
+      const noLegend = { ...common, plugins: { ...common.plugins, legend: { display: false } } };
 
-      const data = q.options.map((opt) => counts[opt.id] || 0);
+      const cartesianScales = {
+        x: { ticks: { color: '#94a3b8' }, grid: { display: false } },
+        y: { beginAtZero: true, ticks: { color: '#94a3b8', precision: 0 }, grid: { color: 'rgba(255,255,255,0.06)' } }
+      };
 
       if (type === 'bar') {
         return {
           type: 'bar',
+          data: { labels, datasets: [{ label: '票數', data, backgroundColor: colors, borderWidth: 0, borderRadius: 8 }] },
+          options: { ...noLegend, scales: cartesianScales }
+        };
+      }
+
+      if (type === 'line') {
+        return {
+          type: 'line',
           data: {
-            labels: q.options.map((opt) => opt.label),
-            datasets: [{ label: '票數', data, backgroundColor: colors, borderWidth: 0, borderRadius: 8 }]
+            labels,
+            datasets: [{
+              label: '票數',
+              data,
+              borderColor: CHART_COLORS[0],
+              backgroundColor: 'rgba(139, 92, 246, 0.15)',
+              fill: true,
+              tension: 0.3,
+              borderWidth: 2,
+              pointRadius: 5,
+              pointBackgroundColor: colors,
+              pointBorderColor: colors
+            }]
+          },
+          options: { ...noLegend, scales: cartesianScales }
+        };
+      }
+
+      if (type === 'radar') {
+        return {
+          type: 'radar',
+          data: {
+            labels,
+            datasets: [{
+              label: '票數',
+              data,
+              borderColor: CHART_COLORS[0],
+              backgroundColor: 'rgba(139, 92, 246, 0.25)',
+              borderWidth: 2,
+              pointRadius: 4,
+              pointBackgroundColor: colors,
+              pointBorderColor: colors
+            }]
           },
           options: {
-            ...common,
-            plugins: { ...common.plugins, legend: { display: false } },
+            ...noLegend,
             scales: {
-              x: { ticks: { color: '#94a3b8' }, grid: { display: false } },
-              y: { beginAtZero: true, ticks: { color: '#94a3b8', precision: 0 }, grid: { color: 'rgba(255,255,255,0.06)' } }
+              r: {
+                beginAtZero: true,
+                ticks: { color: '#94a3b8', precision: 0, backdropColor: 'transparent' },
+                grid: { color: 'rgba(255,255,255,0.08)' },
+                angleLines: { color: 'rgba(255,255,255,0.08)' },
+                pointLabels: { color: '#94a3b8', font: { size: 12, family: 'Outfit, "Noto Sans TC", sans-serif' } }
+              }
             }
           }
         };
       }
 
-      // pie / doughnut
+      // pie
       return {
-        type,
-        data: {
-          labels: q.options.map((opt) => opt.label),
-          datasets: [{ data, backgroundColor: colors, borderColor: 'rgba(10,11,16,0.6)', borderWidth: 2 }]
-        },
+        type: 'pie',
+        data: { labels, datasets: [{ data, backgroundColor: colors, borderColor: 'rgba(10,11,16,0.6)', borderWidth: 2 }] },
         options: common
       };
     }
@@ -1184,16 +1179,7 @@
         const rows = [];
         snapshot.forEach((docSnap) => {
           const data = docSnap.data();
-          rows.push({
-            question: data.question,
-            option: data.option,
-            uid: data.uid,
-            // serverTimestamp() 在本地快照裡會短暫是 null，累積趨勢圖先略過這筆，
-            // 下一次快照就會補上
-            at: data.updated_at && typeof data.updated_at.toMillis === 'function'
-              ? data.updated_at.toMillis()
-              : null
-          });
+          rows.push({ question: data.question, option: data.option, uid: data.uid });
         });
 
         applyBallots(rows);
@@ -1208,7 +1194,6 @@
 
     // Firestore 監聽與離線示範模式共用
     function applyBallots(rows) {
-      ballots = rows;
       tally = {};
       myVotes = {};
 
@@ -1275,19 +1260,13 @@
     function initDemoMode() {
       myUid = DEMO_UID;
 
-      // 造一點假票，讓圖表在本機也有東西可看（時間往回推，趨勢圖才畫得出來）
-      const now = Date.now();
+      // 造一點假票，讓四種圖表在本機也有東西可看
       QUESTIONS.forEach((q, qi) => {
         q.options.forEach((opt, oi) => {
           const fake = ((qi + 1) * 3 + (q.options.length - oi) * 2) % 7 + 1;
           for (let i = 0; i < fake; i++) {
             const uid = `demo-${q.id}-${opt.id}-${i}`;
-            demoBallots.set(`${uid}_${q.id}`, {
-              question: q.id,
-              option: opt.id,
-              uid,
-              at: now - (fake - i) * 60000 - oi * 15000
-            });
+            demoBallots.set(`${uid}_${q.id}`, { question: q.id, option: opt.id, uid });
           }
         });
       });
@@ -1309,7 +1288,7 @@
       if (optionId === null) {
         demoBallots.delete(key);
       } else {
-        demoBallots.set(key, { question: questionId, option: optionId, uid: DEMO_UID, at: Date.now() });
+        demoBallots.set(key, { question: questionId, option: optionId, uid: DEMO_UID });
       }
       demoEmit();
     }

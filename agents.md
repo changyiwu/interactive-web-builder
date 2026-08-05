@@ -36,7 +36,7 @@
 - ~~階段九：把階段七、八的改動推上 GitHub Pages 實測正式路徑~~（正式站已刪除，作廢；那些 UI 改動已隨技能模板延續）
 - ~~階段十：正式站 UI 持續優化~~（正式站已刪除，作廢；要優化改動技能模板）
 - [x] 階段十一：把文字雲頁流程封裝成 `word-cloud-page` 技能，資料改走 `clouds/{cloudId}/words/` 子集合，一份規則涵蓋所有新產生的文字雲
-- [x] 階段十二：新增 `poll-page` 技能（`polls/{pollId}/votes/`），投票頁附即時圓餅／甜甜圈／長條／累積趨勢圖表
+- [x] 階段十二：新增 `poll-page` 技能（`polls/{pollId}/votes/`），投票頁附即時圓餅／長條／折線／雷達圖表
 - [ ] 階段十三：兩個技能的正式 Firebase 路徑實測（產生第一份文字雲頁與投票頁，由使用者本人在一般瀏覽器操作）
 
 ## 資料夾結構
@@ -83,7 +83,8 @@
 - GitHub Pages 設定為 `build_type: workflow`（與 `deploy.yml` 一致）；`.claude/launch.json` 是本機預覽設定（`python -m http.server 5173`），目前在版控內，不需要可 `git rm --cached`
 - **`/decks/{slug}/...` 兩條規則已於 2026-08-05 刪除**（`html-slide-builder` 的簡報內嵌互動元件已整組移除，改呼叫本專案技能）。**不要因為在舊文件或舊簡報看到 `decks/` 就把規則加回來**——那些是歷史殘留，正確做法是改用 `clouds/` 或 `polls/` 的獨立互動頁
 - **⚠️ `firestore.rules` 的 `/clouds/{cloudId}/words/` 與 `/polls/{pollId}/votes/` 兩個區塊是 `skills/` 底下兩個技能的生命線，不要刪。**技能每產生一份頁面就給一個 id，資料落在對應子集合；一條規則涵蓋全部，所以新增頁面不必改規則、不必再部署。刪掉會讓**所有已經發出去的文字雲頁／投票頁同時靜默失效**。規則裡的欄位規格（`hasOnly`、長度與次數上限）與 `skills/*/assets/*.html` 的對應常數必須一致，改一邊就要改另一邊
-- **技能模板與本專案的 `index.html`／`app.js` 是各自獨立的程式碼**，只是同源。本站修 bug 不會自動流到技能模板，反之亦然；改動若屬於「兩邊都該有」的性質（例如安全性修正），要明確地各改一次。技能改完別忘了跑 `/sync-skills` 才會更新到各 agent 的全域技能目錄
+- **兩個技能模板是各自獨立的程式碼**（`word-cloud-page` 與 `poll-page` 同源但分家）。一邊修 bug 不會流到另一邊；屬於「兩邊都該有」的性質（例如安全性修正、App Check 初始化順序），要明確地各改一次
+- **根目錄的示範頁是模板的產物，不是正本**。要改版面或行為，改 `skills/*/assets/*.html` 再重新產生 `wordcloud.html`／`poll.html`；直接改示範頁下次重產就被蓋掉。技能改完別忘了跑 `/sync-skills` 才會更新到各 agent 的全域技能目錄
 
 ## 工作約定
 - 任何 Agent、任何電腦：**開工先讀 `handoff.md`，收工必更新 `handoff.md`**
@@ -103,3 +104,4 @@
 - 不要 commit NotebookLM 個人匯出清單或筆記本 ID 清單
 - 不要自動納入無關的 Git 變更
 - 不要儲存學生真名；正式資料只使用班級代號與座號
+
