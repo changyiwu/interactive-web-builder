@@ -11,6 +11,7 @@
 - 2026-07-26：UI 與功能細節優化；新增 localhost 離線示範模式，解決本機連不到 Firebase 的開發困境
 - 2026-08-05：`firestore.rules` 新增 `/decks/` 區塊，把 Firebase 專案分享給 `html-slide-builder` 的簡報互動元件使用
 - 2026-08-05：Cloud Firestore 開啟 App Check 強制執行；Metrics 顯示 92% verified（38 筆中 3 筆 invalid 為自動化瀏覽器所致）
+- 2026-08-05：本專案的文字雲頁流程封裝成 `word-cloud-page` 技能（`skill/`），供其他專案產生獨立部署的文字雲頁；`firestore.rules` 新增 `/clouds/{cloudId}/words/` 區塊
 
 ## 目標與路線圖
 - [x] 階段一：建立線上文字雲核心 HTML/CSS/JS 功能與視覺美化
@@ -23,6 +24,7 @@
 - [x] 階段八：新增 localhost 離線示範模式，讓 UI 迭代不必每次推上線
 - [ ] 階段九：把階段七、八的改動推上 GitHub Pages，實測正式 Firebase 路徑（送出／刪除／批次清空）
 - [ ] 階段十：UI 持續優化（例如敏感詞清單管理、匯出文字雲圖片）
+- [x] 階段十一：把文字雲頁流程封裝成 `word-cloud-page` 技能，資料改走 `clouds/{cloudId}/words/` 子集合，一份規則涵蓋所有新產生的文字雲
 
 ## 資料夾結構
 - `app.js`：核心邏輯與 Firestore 即時監聽/過濾處理
@@ -30,6 +32,7 @@
 - `index.css`：美化與主題樣式設計
 - `firestore.rules`：Firestore 資料庫存取與格式驗證規則
 - `tools/set-admin-password.mjs`：產生管理密碼與 SHA-256 雜湊
+- `skill/`：`word-cloud-page` 技能原始檔（`SKILL.md`、`assets/word-cloud-page.html` 單檔模板、`references/firestore-setup.md`）
 - `.firebaserc` / `firebase.json`：Firebase 專案配置
 - `.github/workflows/deploy.yml`：GitHub Actions 部署腳本
 - `agents.md`：專案藍圖（本檔）
@@ -66,6 +69,9 @@
 - **換網域時要同步更新四處**：`app.js` 的 `APP_CHECK_HOSTS`、reCAPTCHA 主控台網域清單、Firebase Console 的 App Check 設定、Firebase API key 的 referrer 限制。漏改會**靜默失敗**（未 Enforce 時完全無感）
 - GitHub Pages 設定為 `build_type: workflow`（與 `deploy.yml` 一致）；`.claude/launch.json` 是本機預覽設定（`python -m http.server 5173`），目前在版控內，不需要可 `git rm --cached`
 - **⚠️ `firestore.rules` 裡的 `/decks/{slug}/...` 兩個 match 區塊不是孤兒規則，不要刪。**它們是 `html-slide-builder` 專案（`我的雲端硬碟/agents/html-slide-builder`）的簡報互動元件在用的——本專案與它共用同一個 Firebase 專案 `word-cloud-c0bfe`，各走各的路徑，`/decks/` 與 `/words/` 完全隔離。刪掉會讓所有簡報的文字雲與投票**靜默失效**（寫入被 Firestore 預設拒絕）。同理，改動 `/decks/` 的欄位或長度上限時，要同步改對方 `skill/references/firebase-config.md` 的程式碼
+
+- **⚠️ `firestore.rules` 的 `/clouds/{cloudId}/words/` 區塊是 `word-cloud-page` 技能的生命線，不要刪。**技能每產生一份文字雲頁就給一個 `cloudId`，資料落在該子集合；一條規則涵蓋全部，所以新增文字雲不必改規則。刪掉會讓**所有已發出去的文字雲頁同時靜默失效**。欄位規格（`hasOnly`、長度與次數上限）與 `skill/assets/word-cloud-page.html` 的 `MAX_WORD_LENGTH` 必須一致，改一邊就要改另一邊
+- **技能模板與本專案的 `index.html`／`app.js` 是兩份各自獨立的程式碼**，只是同源。本站修 bug 不會自動流到技能模板，反之亦然；改動若屬於「兩邊都該有」的性質（例如安全性修正），要明確地各改一次。技能改完別忘了跑 `/sync-skills` 才會更新到各 agent 的全域技能目錄
 
 ## 工作約定
 - 任何 Agent、任何電腦：**開工先讀 `handoff.md`，收工必更新 `handoff.md`**

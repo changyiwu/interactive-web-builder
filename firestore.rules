@@ -66,6 +66,34 @@ service cloud.firestore {
         && (resource.data.uid == request.auth.uid || isAdmin());
     }
 
+    // ---------- word-cloud-page 技能產生的文字雲頁 ----------
+    // 每產生一份文字雲頁就給它一個 cloudId，資料各自落在自己的子集合，互不干擾。
+    // 欄位規格與上方 /words/ 完全一致（同一份程式碼改路徑而已）；共用 config/admin，
+    // 所以一組管理密碼可以清空任何一份文字雲。
+    //
+    // ⚠️ 用子集合而不是每份新開一個 <cloudId>_words 集合：安全規則的路徑片段只能是
+    // 完整字面值或完整萬用字元，寫不出 match /{cloudId}_words/；且那樣每產生一份
+    // 文字雲都得改規則再部署一次。子集合一條規則涵蓋全部，新增文字雲不必碰規則。
+    match /clouds/{cloudId}/words/{word} {
+      allow read: if isSignedIn();
+
+      allow create, update: if isSignedIn()
+        && cloudId.matches('^[a-zA-Z0-9_-]{1,40}$')
+        && request.resource.data.keys().hasOnly(['text', 'count', 'timestamp', 'uid'])
+        && request.resource.data.text is string
+        && request.resource.data.text.size() > 0
+        && request.resource.data.text.size() <= 100
+        && request.resource.data.count is int
+        && request.resource.data.count > 0
+        && request.resource.data.count <= 1000
+        && request.resource.data.timestamp == request.time
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.uid + '_' + request.resource.data.text == word;
+
+      allow delete: if isSignedIn()
+        && (resource.data.uid == request.auth.uid || isAdmin());
+    }
+
     // ---------- html-slide-builder 簡報互動 ----------
     // 與上方 /words/ 完全隔離，共用同一個 Firebase 專案但各走各的路徑。
     // 用子集合而非 <slug>_wordcloud 扁平命名，是因為安全規則的路徑片段
