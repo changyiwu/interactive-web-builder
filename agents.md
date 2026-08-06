@@ -91,6 +91,8 @@
 - **管理密碼的暴力破解問題沒有根治**：安全規則沒有速率限制，任何人都能匿名登入後反覆嘗試刪除來猜密碼。根治要把權限判定移到 Cloud Functions（需 Blaze 方案）。現行做法只是提高成本，不是消除弱點——**這是已知且接受的風險**
 - **換網域時要同步更新四處**：技能模板（與已產生的頁面）裡的 `APP_CHECK_HOSTS`、reCAPTCHA 主控台網域清單、Firebase Console 的 App Check 設定、Firebase API key 的 referrer 限制。漏改會**靜默失敗**（未 Enforce 時完全無感）
 - GitHub Pages 設定為 `build_type: workflow`（與 `deploy.yml` 一致）；`.claude/launch.json` 是本機預覽設定（`python -m http.server 5173`），目前在版控內，不需要可 `git rm --cached`
+- **Firestore Emulator 需 Java 21 以上**：目前這台只有 Java 8，未升級前可用 Firebase MCP 的 `firebase_validate_security_rules` 做語法驗證，但不能宣稱已完成 Emulator 測試；不要把 Java 版本錯誤誤判成規則錯誤
+- **GitHub Pages 若在 artifact 上傳完成後卡於 `deploy-pages` 並 timeout，應重跑完整 `workflow_dispatch`，不要用 `gh run rerun --failed`**，否則可能撞到同名 artifact。若全新 run 仍連續卡在 deployment queue／in progress，停止快速重試並等待 Pages 後端恢復；不要為平台端排隊去修改 HTML 或縮小 repo
 - **`/decks/{slug}/...` 兩條規則已於 2026-08-05 刪除**（`html-slide-builder` 的簡報內嵌互動元件已整組移除，改呼叫本專案技能）。**不要因為在舊文件或舊簡報看到 `decks/` 就把規則加回來**——那些是歷史殘留，正確做法是改用 `clouds/` 或 `polls/` 的獨立互動頁
 - **⚠️ `firestore.rules` 的 `/clouds/{cloudId}/words/` 與 `/polls/{pollId}/votes/` 兩個區塊是 `skills/` 底下兩個技能的生命線，不要刪。**技能每產生一份頁面就給一個 id，資料落在對應子集合；一條規則涵蓋全部，所以新增頁面不必改規則、不必再部署。刪掉會讓**所有已經發出去的文字雲頁／投票頁同時靜默失效**。規則裡的欄位規格（`hasOnly`、長度與次數上限）與 `skills/*/assets/*.html` 的對應常數必須一致，改一邊就要改另一邊
 - **兩個技能模板是各自獨立的程式碼**（`word-cloud-page` 與 `poll-page` 同源但分家）。一邊修 bug 不會流到另一邊；屬於「兩邊都該有」的性質（例如安全性修正、App Check 初始化順序），要明確地各改一次
