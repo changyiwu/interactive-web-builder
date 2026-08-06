@@ -12,15 +12,17 @@
 | reCAPTCHA v3 site key | `6LfHM2UtAAAAAFg3pFgvRtMiUXNfLvWC1ny3C0bj`（公開金鑰，可進原始碼） |
 | 已註冊網域 | `changyiwu.github.io` |
 
-同一個專案目前有這些互相隔離的資料，**規則彼此都不能互刪**：
+同一個專案目前有兩組互相隔離的資料，**規則彼此都不能互刪**：
 
 ```
-words/<uid>_<詞>                       ← interactive-web-builder 正式站
 clouds/<cloudId>/words/<uid>_<詞>      ← word-cloud-page 技能產生的文字雲頁
 polls/<pollId>/votes/<uid>_<題號>      ← 本技能產生的投票頁 ★
 ```
 
-2026-08-05 之前還有 `decks/<slug>/votes/`，那是 html-slide-builder 簡報內嵌投票用的。該功能已整組移除、規則也已刪除；在舊文件看到 `decks/` **不要把規則加回來**。本技能的 `/polls/` 與它的差別在於 delete 允許 `isAdmin()`，講者才能一鍵重置票數。
+已刪除、不要救回來的歷史路徑（在舊文件或舊簡報看到不代表還要用）：
+
+- `words/<uid>_<詞>`：Cloudify 文字雲正式站的頂層集合，站與集合已於 2026-08-05 一起刪除，功能由 word-cloud-page 技能取代
+- `decks/<slug>/votes/`：html-slide-builder 簡報內嵌投票用的，該功能已整組移除、規則也已刪除。本技能的 `/polls/` 與它的差別在於 delete 允許 `isAdmin()`，講者才能一鍵重置票數
 
 ## 為什麼是子集合，不是「每份新開一個 collection」
 

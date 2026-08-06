@@ -12,15 +12,19 @@
 | reCAPTCHA v3 site key | `6LfHM2UtAAAAAFg3pFgvRtMiUXNfLvWC1ny3C0bj`（公開金鑰，可進原始碼） |
 | 已註冊網域 | `changyiwu.github.io` |
 
-同一個專案目前有三組互相隔離的資料：
+同一個專案目前有兩組互相隔離的資料：
 
 ```
-words/<uid>_<詞>                       ← interactive-web-builder 正式站（單一份，歷史包袱）
 clouds/<cloudId>/words/<uid>_<詞>      ← 本技能產生的文字雲頁 ★
 polls/<pollId>/votes/<uid>_<題號>      ← poll-page 技能產生的投票頁
 ```
 
-**這三條規則都不能互刪。**（2026-08-05 之前還有 `decks/<slug>/...`，那是簡報內嵌互動元件用的，該功能已整組移除、規則也已刪除。在舊文件看到 `decks/` 不要把規則加回來。）
+**這兩條規則都不能互刪。**
+
+已刪除、不要救回來的歷史路徑（在舊文件或舊簡報看到不代表還要用）：
+
+- `words/<uid>_<詞>`：Cloudify 文字雲正式站的頂層集合，站與集合已於 2026-08-05 一起刪除，功能由本技能取代
+- `decks/<slug>/...`：簡報內嵌互動元件用的，該功能已整組移除、規則也已刪除
 
 ## 為什麼是子集合，不是「每份新開一個 collection」
 

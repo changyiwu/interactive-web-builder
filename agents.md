@@ -24,6 +24,7 @@
 - 2026-08-05：`html-slide-builder` 移除簡報內嵌的文字雲與投票，改呼叫本專案技能；`/decks/` 兩條規則隨之刪除；專案由 `online-word-cloud` 更名為 `interactive-web-builder`
 - 2026-08-05：刪除 Cloudify 文字雲正式站與 `words` 集合（38 筆），改由技能產生的獨立互動頁取代；根目錄放兩份示範頁 `wordcloud.html`／`poll.html`
 - 2026-08-05：兩個技能的正式路徑（`clouds/`、`polls/`）由使用者實測通過，兩個技能自此可正式使用
+- 2026-08-06：清除已刪除的頂層 `words` 集合在技能文件與規則註解裡的殘留；`NB-YI` 補裝兩個技能到四家全域技能目錄
 
 ## 目標與路線圖
 - [x] 階段一：建立線上文字雲核心 HTML/CSS/JS 功能與視覺美化
@@ -39,7 +40,8 @@
 - [x] 階段十一：把文字雲頁流程封裝成 `word-cloud-page` 技能，資料改走 `clouds/{cloudId}/words/` 子集合，一份規則涵蓋所有新產生的文字雲
 - [x] 階段十二：新增 `poll-page` 技能（`polls/{pollId}/votes/`），投票頁附即時圓餅／長條／折線／雷達圖表
 - [x] 階段十三：兩個技能的正式 Firebase 路徑實測——`clouds/` 與 `polls/` 由使用者本人在一般瀏覽器實測通過
-- [ ] 階段十四：兩個技能同步到各 agent 的全域技能目錄（`/sync-skills`），`html-slide-builder` 的四家副本一併更新
+- [x] 階段十四：兩個技能同步到各 agent 的全域技能目錄（`/sync-skills`），`html-slide-builder` 的四家副本一併更新
+- [x] 階段十五：清除 `words` 集合殘留（兩份 `references/firestore-setup.md`、`firestore.rules` 註解、根目錄未追蹤的正式站殘檔）
 
 ## 資料夾結構
 - `firestore.rules`：Firestore 資料庫存取與格式驗證規則（所有互動頁共用的正本）
@@ -89,6 +91,9 @@
 - **⚠️ `firestore.rules` 的 `/clouds/{cloudId}/words/` 與 `/polls/{pollId}/votes/` 兩個區塊是 `skills/` 底下兩個技能的生命線，不要刪。**技能每產生一份頁面就給一個 id，資料落在對應子集合；一條規則涵蓋全部，所以新增頁面不必改規則、不必再部署。刪掉會讓**所有已經發出去的文字雲頁／投票頁同時靜默失效**。規則裡的欄位規格（`hasOnly`、長度與次數上限）與 `skills/*/assets/*.html` 的對應常數必須一致，改一邊就要改另一邊
 - **兩個技能模板是各自獨立的程式碼**（`word-cloud-page` 與 `poll-page` 同源但分家）。一邊修 bug 不會流到另一邊；屬於「兩邊都該有」的性質（例如安全性修正、App Check 初始化順序），要明確地各改一次
 - **根目錄的示範頁是模板的產物，不是正本**。要改版面或行為，改 `skills/*/assets/*.html` 再重新產生 `wordcloud.html`／`poll.html`；直接改示範頁下次重產就被蓋掉。技能改完別忘了跑 `/sync-skills` 才會更新到各 agent 的全域技能目錄
+- **示範頁的 `demo_cloud_20260805`／`demo_poll_20260805` 是測試用 id，裡面有實測留下的資料。正式上課一律另外產生新頁面、換新 id**，沿用會讓兩批資料混在一起
+- **雲端硬碟會把已刪除的檔案同步回來。**根目錄若又冒出未追蹤的 `index.html`／`index.css`／`app.js`，那是已刪除的 Cloudify 正式站殘檔（指向死掉的頂層 `words` 集合），**直接刪不必猶豫**；內容留在 git 歷史的 460ddea，真要考古用 `git show 460ddea^:app.js`
+- **技能安裝是逐台的，四個全域技能目錄不會跨機同步。**「已安裝」永遠要問「哪一台」——唯一真相是 `我的雲端硬碟/agents/.skill-install/<電腦名>.json`，而那份清單只有該台自己跑 `/sync-skills` 時才更新。在 handoff 或筆記寫「已同步到四家」時**務必標明電腦名**，否則下一台會以為自己也有（實測：階段十四在 `PC-YI-SL` 完成，`NB-YI` 隔天才發現根本沒裝）
 
 ## 工作約定
 - 任何 Agent、任何電腦：**開工先讀 `handoff.md`，收工必更新 `handoff.md`**
@@ -108,4 +113,3 @@
 - 不要 commit NotebookLM 個人匯出清單或筆記本 ID 清單
 - 不要自動納入無關的 Git 變更
 - 不要儲存學生真名；正式資料只使用班級代號與座號
-
