@@ -1,7 +1,7 @@
 ---
 name: word-cloud-page
 description: |
-  產生一份可獨立部署的「即時協作文字雲網頁」：觀眾用手機開頁面輸入一整段話，系統自動斷詞、累計詞頻，透過 Firebase Firestore 即時同步渲染成文字雲，並附排行榜、刪除自己的字詞、管理員一鍵清空、不雅字詞過濾、網址 QR Code。
+  產生一份可獨立部署的「即時協作文字雲網頁」：觀眾用手機開頁面輸入一整段話，系統自動斷詞、累計詞頻，透過 Firebase Firestore 即時同步渲染成文字雲，並附排行榜、刪除自己的字詞、不雅字詞過濾、網址 QR Code。頁面右上角有管理者登入，講者登入後才能刪除個別字詞（含別人送出的）與清除全部資料。
 
   每產生一份就給它一個 cloudId，資料落在 `clouds/<cloudId>/words/` 各自的子集合，多份文字雲共用同一個 Firebase 專案但完全互不干擾，新增時不必改安全規則、不必重新部署資料庫設定。
 
@@ -27,6 +27,7 @@ description: |
 | 項目 | 怎麼確認 | 沒到位的處理 |
 |------|---------|-------------|
 | 安全規則已含 `match /clouds/{cloudId}/words/{word}` | 讀 `interactive-web-builder/firestore.rules` 或 Firebase Console → Firestore → 規則 | 見 `references/firestore-setup.md`，補上並部署 |
+| 安全規則的 `/admin_auth/` 寫入條件已含 `== get(config/admin).data.passwordHash` | 同上 | 沒有這一段，**管理者登入會一律成功**（連錯的密碼也是），只是登入後每個刪除動作都失敗。見 `references/firestore-setup.md` |
 | Firebase 專案已啟用匿名登入 | Console → Authentication → Sign-in method → Anonymous | 開啟它 |
 | 部署網域已註冊在 reCAPTCHA／App Check／API key referrer | 部署到 `changyiwu.github.io` 就已經涵蓋，不必再設 | 換新網域見 `references/firestore-setup.md` 的「換網域要改四處」 |
 
@@ -77,7 +78,7 @@ python -m http.server 5173
 
 `localhost` 會自動進**離線示範模式**：顯示假資料、橫幅寫著「離線示範模式」、管理密碼固定 `demo`，所有操作只存在那個分頁裡，**不會碰到正式資料庫**。這是刻意的——本機連不到 Firebase 是 API key referrer 限制的正常結果，不要為了本機方便去 GCP Console 放寬它。
 
-預覽時檢查：標題／提問文字正確、送出後排行榜與文字雲更新、「網址 QR Code」開得起來。
+預覽時檢查：標題／提問文字正確、送出後排行榜與文字雲更新、「網址 QR Code」開得起來、右上角「管理者登入」輸入 `demo` 後每一列都出現垃圾桶與「清除全部字詞」。
 
 > 本機 `python -m http.server` 不送 Cache-Control，改了檔案沒反應時先硬重新整理，別誤判成程式沒生效。
 
@@ -135,7 +136,7 @@ python -m http.server 5173
 1. 正式網址
 2. `CLOUD_ID`（之後要清資料或查資料得用它）
 3. 資料位置：`clouds/<CLOUD_ID>/words/`
-4. 管理密碼由誰保管（清空全部要用；密碼是整個 Firebase 專案共用的那一組）
+4. 管理密碼由誰保管（右上角「管理者登入」用；密碼是整個 Firebase 專案共用的那一組）。提醒講者：**現場刪東西前要先登入，離開前記得登出**（關掉分頁或重新整理也會自動失效）
 5. ⚠️ 提醒：正式站請本人用一般瀏覽器實測一次送出
 
 ---
@@ -146,7 +147,9 @@ python -m http.server 5173
 - 即時同步（Firestore `onSnapshot`），同一個詞固定顏色不閃爍
 - 熱門字詞排行榜（列出全部、自己捲動）
 - 刪除自己送出的字詞（只有自己的那幾筆會出現垃圾桶圖示）
-- 管理員一鍵刪除全部（SHA-256 雜湊比對，明文密碼不離開瀏覽器）
+- **管理者登入**（右上角，未登入時只有一個登入按鈕，看不到任何刪除全部的入口）
+- 管理模式下：每一列都出現垃圾桶（刪掉**所有人**為那個詞累計的次數）、排行榜標題列出現「清除全部字詞」
+- 密碼以 SHA-256 雜湊比對，明文不離開瀏覽器；憑證只在登入期間存在，登出或重新整理即失效
 - 不雅字詞過濾、單詞長度上限 100 字
 - 網址 QR Code（可複製網址、下載帶白邊的 PNG）
 - 離線示範模式、連線狀態指示、toast 提示、Esc 關閉對話框與焦點鎖定
@@ -165,6 +168,8 @@ python -m http.server 5173
 | 本機打不到資料庫 | API key 的 referrer 限制擋掉 localhost | 正常現象，本機本來就跑離線示範模式 |
 | 文字雲空白但排行榜有資料 | wordcloud2 的 CDN 被擋 | 換網路，或把 wordcloud2 下載成本地檔 |
 | 兩份文字雲資料混在一起 | 用了同一個 `CLOUD_ID` | 各自換一個 id 重新產生 |
+| 輸入錯的密碼也能登入，但刪除都失敗 | 線上規則還是舊版（`/admin_auth/` 沒比對 `config/admin`） | 部署新版 `firestore.rules` |
+| 登入後刪除時跳「管理權限已失效」 | 憑證被清掉（例如同一台裝置另開分頁載入頁面時的清理）| 重新登入；同一台裝置不要同時開兩個分頁做管理 |
 
 規則全文、路徑設計理由、App Check 換網域要改哪四處、已知風險：見 `references/firestore-setup.md`。
 

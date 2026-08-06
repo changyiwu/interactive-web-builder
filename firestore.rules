@@ -15,8 +15,9 @@ service cloud.firestore {
         && value.matches('^[0-9a-f]{64}$');
     }
 
-    // 管理者授權：比對使用者臨時憑證與 config/admin 的密碼雜湊。
-    // 前端只會送出 SHA-256 雜湊，明文密碼不離開瀏覽器；config 前端完全不可讀寫，
+    // 管理者授權：使用者持有 admin_auth 登入憑證即為管理者。
+    // 憑證本身在寫入時就已比對過 config/admin（見下方 /admin_auth/），這裡再比對一次，
+    // 確保即使將來放寬寫入規則也不會漏。config 前端完全不可讀寫，
     // 只有安全規則內部的 get() 能取用（get() 不受 read 規則限制）。
     function isAdmin() {
       return exists(/databases/$(database)/documents/admin_auth/$(request.auth.uid))
@@ -31,7 +32,14 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
-    // 管理者臨時憑證：只能操作自己的文件，且只能放 SHA-256 雜湊
+    // 管理者登入憑證：只能操作自己的文件，且只能放 SHA-256 雜湊。
+    //
+    // ⚠️ 寫入時就比對 config/admin：密碼錯誤的雜湊根本寫不進來，所以**寫入成功本身
+    // 就是「登入成功」**。互動頁靠這個做非破壞性的密碼驗證（登入後才顯示管理按鈕），
+    // 不必再拿刪除動作去試密碼。這條 `== get(config/admin)` 拿掉，登入就會全部放行。
+    //
+    // 文件在登入期間持續存在，isAdmin() 每次刪除都會讀它；登出（或下次載入頁面）
+    // 會把它刪掉。密碼明文不離開瀏覽器，資料庫也只有雜湊。
     match /admin_auth/{uid} {
       allow get: if isSignedIn() && request.auth.uid == uid;
       allow list: if false;
@@ -39,7 +47,9 @@ service cloud.firestore {
       allow create, update: if isSignedIn()
         && request.auth.uid == uid
         && request.resource.data.keys().hasOnly(['passwordHash'])
-        && isSha256Hex(request.resource.data.passwordHash);
+        && isSha256Hex(request.resource.data.passwordHash)
+        && request.resource.data.passwordHash
+           == get(/databases/$(database)/documents/config/admin).data.passwordHash;
 
       allow delete: if isSignedIn() && request.auth.uid == uid;
     }

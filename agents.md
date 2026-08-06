@@ -25,6 +25,7 @@
 - 2026-08-05：刪除 Cloudify 文字雲正式站與 `words` 集合（38 筆），改由技能產生的獨立互動頁取代；根目錄放兩份示範頁 `wordcloud.html`／`poll.html`
 - 2026-08-05：兩個技能的正式路徑（`clouds/`、`polls/`）由使用者實測通過，兩個技能自此可正式使用
 - 2026-08-06：清除已刪除的頂層 `words` 集合在技能文件與規則註解裡的殘留；`NB-YI` 補裝兩個技能到四家全域技能目錄
+- 2026-08-06：兩個技能改為**管理者登入制**——移除人人可見的「一鍵刪除全部／一鍵重置投票」，改成右上角登入後才出現管理功能；文字雲的管理者可刪除任何一則字詞。`firestore.rules` 的 `/admin_auth/` 寫入條件加上與 `config/admin` 的雜湊比對，讓「寫得進去」等於「密碼正確」
 
 ## 目標與路線圖
 - [x] 階段一：建立線上文字雲核心 HTML/CSS/JS 功能與視覺美化
@@ -42,6 +43,8 @@
 - [x] 階段十三：兩個技能的正式 Firebase 路徑實測——`clouds/` 與 `polls/` 由使用者本人在一般瀏覽器實測通過
 - [x] 階段十四：兩個技能同步到各 agent 的全域技能目錄（`/sync-skills`），`html-slide-builder` 的四家副本一併更新
 - [x] 階段十五：清除 `words` 集合殘留（兩份 `references/firestore-setup.md`、`firestore.rules` 註解、根目錄未追蹤的正式站殘檔）
+- [x] 階段十六：兩個技能改為管理者登入制（登入後才有刪除入口；文字雲管理者可刪個別字詞），安全規則加上登入驗證條件
+- [ ] 階段十七：新規則部署上線，並由使用者本人用一般瀏覽器實測登入／刪除個別字詞／清除全部
 
 ## 資料夾結構
 - `firestore.rules`：Firestore 資料庫存取與格式驗證規則（所有互動頁共用的正本）
@@ -84,6 +87,7 @@
 - **不要用瀏覽器工具驗證線上的互動頁，會誤判成故障。**Browser pane／Playwright 等自動化瀏覽器的 reCAPTCHA v3 分數極低，App Check 換 token 會被回 **403**，接著 Firestore 一律 `permission-denied`、畫面卡在「連線驗證中…」。**那是 Enforce 正常運作，不是線上壞掉**——它擋的就是這種 client。判斷正式站健康與否**只看 Firebase Console → App Check → Metrics**：verified 占絕大多數即正常（少數 invalid 通常就是自己剛才那幾次自動化載入）。真要用自動化瀏覽器驗證，得先在 Console 註冊 debug token，那等於發永久通行證，僅限開發環境
 - **本機驗投票頁的圖表時，`requestAnimationFrame` 可能不會觸發**（Browser pane 沒在合成畫面時）。Chart.js 靠 rAF 繪製，於是資料正確但畫布是空的——**那是測試環境的限制，不是圖表壞了**。要驗像素就手動呼叫 `chart.draw()` 再讀 `getImageData`。文字雲的 wordcloud2 不受影響（它走 setTimeout）
 - **Firebase 專案 ID `word-cloud-c0bfe` 不可更改**，那是建立時就固定的識別碼；能改的只有 Console 上的顯示名稱。ID 也綁著 `authDomain`／`storageBucket`。不要為了名稱一致去開新專案搬家——代價是新 API key、reCAPTCHA 與 App Check 重新註冊、`config/admin` 重建，且**所有已發出去的互動頁會全部失效**（config 寫死在每份 HTML 裡）
+- **管理者登入的驗證機制寄生在 `/admin_auth/` 的寫入規則上**：那條規則要求寫進去的雜湊必須等於 `config/admin.passwordHash`，所以「setDoc 成功」＝「密碼正確」，頁面才能在不刪任何東西的前提下驗證密碼。**把那個 `== get(.../config/admin)` 拿掉，所有互動頁的登入就會一律成功**（連錯的密碼也是），而且要等到使用者按下刪除才發現不對。管理憑證只在登入期間存在，登出、重新整理、或同一台裝置另開分頁載入頁面都會清掉它
 - **管理密碼的暴力破解問題沒有根治**：安全規則沒有速率限制，任何人都能匿名登入後反覆嘗試刪除來猜密碼。根治要把權限判定移到 Cloud Functions（需 Blaze 方案）。現行做法只是提高成本，不是消除弱點——**這是已知且接受的風險**
 - **換網域時要同步更新四處**：技能模板（與已產生的頁面）裡的 `APP_CHECK_HOSTS`、reCAPTCHA 主控台網域清單、Firebase Console 的 App Check 設定、Firebase API key 的 referrer 限制。漏改會**靜默失敗**（未 Enforce 時完全無感）
 - GitHub Pages 設定為 `build_type: workflow`（與 `deploy.yml` 一致）；`.claude/launch.json` 是本機預覽設定（`python -m http.server 5173`），目前在版控內，不需要可 `git rm --cached`

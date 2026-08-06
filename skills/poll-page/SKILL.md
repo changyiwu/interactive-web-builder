@@ -3,7 +3,7 @@ name: poll-page
 description: |
   產生一份可獨立部署的「即時投票網頁」：給定題目與選項，聽眾用手機開頁面投票，票數透過 Firebase Firestore 即時同步，同步畫成統計圖表（圓餅圖／長條圖／折線圖／雷達圖，現場可切換）。
 
-  一頁可放多題，每題各自一張卡與一張圖表。一人一題一票，改投票是覆寫自己那份、再按一次可收回，天然防灌票。附管理員一鍵重置票數與網址 QR Code。
+  一頁可放多題，每題各自一張卡與一張圖表。一人一題一票，改投票是覆寫自己那份、再按一次可收回，天然防灌票。附網址 QR Code；頁面右上角有管理者登入，講者登入後才會出現「重置全部票數」。
 
   每產生一份就給它一個 pollId，資料落在 `polls/<pollId>/votes/` 各自的子集合，多份投票共用同一個 Firebase 專案但互不干擾，新增時不必改安全規則。
 
@@ -31,6 +31,7 @@ description: |
 | 項目 | 怎麼確認 | 沒到位的處理 |
 |------|---------|-------------|
 | 安全規則已含 `match /polls/{pollId}/votes/{ballot}` | 讀 `interactive-web-builder/firestore.rules` 或 Firebase Console → Firestore → 規則 | 見 `references/firestore-setup.md`，補上並部署 |
+| 安全規則的 `/admin_auth/` 寫入條件已含 `== get(config/admin).data.passwordHash` | 同上 | 沒有這一段，**管理者登入會一律成功**（連錯的密碼也是），只是登入後重置票數會失敗。見 `references/firestore-setup.md` |
 | Firebase 專案已啟用匿名登入 | Console → Authentication → Sign-in method → Anonymous | 開啟它 |
 | 部署網域已註冊在 reCAPTCHA／App Check／API key referrer | 部署到 `changyiwu.github.io` 就已經涵蓋 | 換新網域見 `references/firestore-setup.md` |
 
@@ -109,7 +110,7 @@ python -m http.server 5173
 
 `localhost` 會自動進**離線示範模式**：自動塞一批假票讓四種圖表都有東西可看，管理密碼固定 `demo`，所有操作只存在那個分頁裡，**不會碰到正式資料庫**。
 
-預覽時檢查：題目與選項文字正確、投票後百分比與圖表更新、四種圖表都切得動、再按一次可收回。
+預覽時檢查：題目與選項文字正確、投票後百分比與圖表更新、四種圖表都切得動、再按一次可收回、右上角「管理者登入」輸入 `demo` 後才出現「重置全部票數」。
 
 > 本機 `python -m http.server` 不送 Cache-Control，改了檔案沒反應時先硬重新整理。
 
@@ -159,7 +160,7 @@ commit 進目標 repo 並 push，等 GitHub Pages 部署完成，取得正式網
 1. 正式網址
 2. `POLL_ID` 與各題的 `id`（之後查資料或重置要用）
 3. 資料位置：`polls/<POLL_ID>/votes/`
-4. 管理密碼由誰保管（一鍵重置要用；密碼是整個 Firebase 專案共用的那一組）
+4. 管理密碼由誰保管（右上角「管理者登入」用；密碼是整個 Firebase 專案共用的那一組）。提醒講者：**重置票數前要先登入，離開前記得登出**（關掉分頁或重新整理也會自動失效）
 5. ⚠️ 提醒：正式站請本人用一般瀏覽器實測投一票
 
 ---
@@ -170,7 +171,9 @@ commit 進目標 repo 並 push，等 GitHub Pages 部署完成，取得正式網
 - 四種圖表現場切換：圓餅圖、長條圖、折線圖、雷達圖（橫軸一律是選項，四種共用同一組顏色）
 - 選項按鈕上直接顯示票數、百分比與進度條
 - 一人一題一票；改投票覆寫自己那份；**再按一次已選的選項可收回**
-- 管理員一鍵重置票數（SHA-256 雜湊比對，明文密碼不離開瀏覽器）
+- **管理者登入**（右上角，未登入時只有一個登入按鈕，看不到重置入口）
+- 管理模式下才出現「重置全部票數」，按下去還要再確認一次
+- 密碼以 SHA-256 雜湊比對，明文不離開瀏覽器；憑證只在登入期間存在，登出或重新整理即失效
 - 網址 QR Code（可複製網址、下載帶白邊的 PNG）
 - 離線示範模式、連線狀態指示、toast 提示、Esc 關閉對話框與焦點鎖定
 - 桌機／平板／手機三段式版面
@@ -192,7 +195,8 @@ commit 進目標 repo 並 push，等 GitHub Pages 部署完成，取得正式網
 | 投票時 `permission-denied` | 規則沒有 `/polls/` 區塊，或 `POLL_ID`／題目 id 不合法 | id 需符合 `^[a-zA-Z0-9_-]{1,40}$`，題目與選項 id 皆 ≤ 40 字 |
 | 票投得下去但圖表空白 | Chart.js 的 CDN 被擋 | 選項按鈕上的票數與百分比仍正常；換網路或把 Chart.js 下載成本地檔 |
 | 本機打不到資料庫 | API key 的 referrer 限制擋掉 localhost | 正常現象，本機本來就跑離線示範模式 |
-| 兩場的票混在一起 | 用了同一個 `POLL_ID` | 各自換一個 id 重新產生，或用「一鍵重置投票」清空 |
+| 兩場的票混在一起 | 用了同一個 `POLL_ID` | 各自換一個 id 重新產生，或登入後用「重置全部票數」清空 |
+| 輸入錯的密碼也能登入，但重置失敗 | 線上規則還是舊版（`/admin_auth/` 沒比對 `config/admin`） | 部署新版 `firestore.rules` |
 | 改了題目文字後票數看起來怪 | 只改 `title`／`label` 沒關係；**改了 `id` 就等於換一題** | 要沿用舊票就把 id 改回來；要重新開始就換 id 或重置 |
 
 規則全文、路徑設計理由、App Check 換網域要改哪四處、已知風險：見 `references/firestore-setup.md`。

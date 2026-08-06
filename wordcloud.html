@@ -267,6 +267,29 @@
     .status-indicator.offline .status-dot { background-color: var(--danger-color); box-shadow: 0 0 8px var(--danger-color); }
     .status-indicator.online .status-dot { background-color: var(--accent-green); box-shadow: 0 0 8px var(--accent-green); }
 
+    .header-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+
+    /* 管理功能一律藏起來，登入成功才由 body.is-admin 打開 */
+    .admin-only { display: none; }
+    body.is-admin .admin-only { display: flex; }
+    body.is-admin .guest-only { display: none; }
+
+    .admin-badge {
+      display: none;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 12px;
+      border-radius: 30px;
+      border: 1px solid rgba(16, 185, 129, 0.35);
+      background: rgba(16, 185, 129, 0.12);
+      color: var(--accent-green);
+      font-size: 12px;
+      font-weight: 600;
+      white-space: nowrap;
+    }
+
+    body.is-admin .admin-badge { display: flex; }
+
     .cloud-card { flex: 1; min-height: 500px; }
 
     .canvas-container {
@@ -517,6 +540,9 @@
     .delete-btn:active { transform: scale(0.95); }
     .delete-btn svg { width: 14px; height: 14px; }
 
+    /* 管理者刪的是所有人的紀錄，先用顏色區分再由確認框說清楚 */
+    .delete-btn.admin { color: var(--danger-color); }
+
     .empty-state {
       justify-content: center !important;
       color: var(--text-secondary);
@@ -590,9 +616,22 @@
         </svg>
         <span class="gradient-text">文字雲測試頁</span>
       </div>
-      <div id="connection-status" class="status-indicator offline" role="status" aria-live="polite">
-        <span class="status-dot"></span>
-        <span class="status-text">未連接 Firebase</span>
+      <div class="header-actions">
+        <button type="button" id="admin-login-btn" class="ghost-btn compact-btn guest-only" title="管理者登入後才能刪除資料">
+          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
+          <span>管理者登入</span>
+        </button>
+        <span id="admin-badge" class="admin-badge" role="status">
+          <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2"></rect><path d="M7 11V7a5 5 0 0 1 9.9-1"></path></svg>
+          <span>管理模式</span>
+        </span>
+        <button type="button" id="admin-logout-btn" class="ghost-btn compact-btn admin-only" title="離開管理模式">
+          <span>登出</span>
+        </button>
+        <div id="connection-status" class="status-indicator offline" role="status" aria-live="polite">
+          <span class="status-dot"></span>
+          <span class="status-text">未連接 Firebase</span>
+        </div>
       </div>
     </header>
 
@@ -650,8 +689,8 @@
             <h2>熱門字詞</h2>
             <span id="word-summary" class="summary-chip" aria-live="polite">尚無資料</span>
           </div>
-          <button id="clear-all-btn" class="danger-btn outline-btn compact-btn" title="清除這份文字雲的所有資料">
-            <span>一鍵刪除全部</span>
+          <button id="clear-all-btn" class="danger-btn outline-btn compact-btn admin-only" title="清除這份文字雲的所有資料">
+            <span>清除全部字詞</span>
           </button>
         </div>
         <div class="stat-container">
@@ -663,11 +702,11 @@
     </main>
   </div>
 
-  <!-- 管理者驗證對話框 -->
+  <!-- 管理者登入對話框 -->
   <div id="admin-modal" class="modal-overlay hidden">
     <form id="admin-form" class="glass-card modal-card" role="dialog" aria-modal="true" aria-labelledby="admin-modal-title">
-      <h2 id="admin-modal-title">管理者驗證</h2>
-      <p class="subtitle">「一鍵刪除全部」需要管理密碼。密碼只會在瀏覽器內換算成雜湊送出，明文不會離開這個頁面。</p>
+      <h2 id="admin-modal-title">管理者登入</h2>
+      <p class="subtitle">登入後才能刪除個別字詞與清除全部資料。密碼只會在瀏覽器內換算成雜湊送出，明文不會離開這個頁面。</p>
 
       <label class="modal-field">
         <span>管理密碼</span>
@@ -678,7 +717,7 @@
 
       <div class="modal-actions">
         <button type="button" id="admin-cancel" class="ghost-btn"><span>取消</span></button>
-        <button type="submit" id="admin-submit" class="danger-btn"><span>確認刪除全部</span></button>
+        <button type="submit" id="admin-submit" class="primary-btn"><span>登入</span></button>
       </div>
     </form>
   </div>
@@ -774,6 +813,11 @@
     let myUid = null;
     let dataReady = false;
 
+    // 管理模式：登入成功才是 true。管理者能刪除任何人的字詞、清除全部資料。
+    let isAdminMode = false;
+    // 字詞 -> 該字詞在 Firestore 的所有文件 id（每人一份）。管理者刪除要全刪。
+    let docIdsByText = new Map();
+
     const textForm = document.getElementById('text-form');
     const textInput = document.getElementById('text-input');
     const inputHint = document.getElementById('input-hint');
@@ -793,6 +837,8 @@
     const adminError = document.getElementById('admin-error');
     const adminSubmit = document.getElementById('admin-submit');
     const adminCancel = document.getElementById('admin-cancel');
+    const adminLoginBtn = document.getElementById('admin-login-btn');
+    const adminLogoutBtn = document.getElementById('admin-logout-btn');
     const clearAllBtn = document.getElementById('clear-all-btn');
 
     const confirmModal = document.getElementById('confirm-modal');
@@ -1121,6 +1167,15 @@
       return fb.doc(db, 'clouds', CLOUD_ID, 'words', `${myUid}_${word}`);
     }
 
+    // 管理者刪除／清空時要用文件 id 直接指定，不能靠 <uid>_<詞> 推算（那只算得出自己的）
+    function wordDocRefById(docId) {
+      return fb.doc(db, 'clouds', CLOUD_ID, 'words', docId);
+    }
+
+    function adminAuthRef() {
+      return fb.doc(db, 'admin_auth', myUid);
+    }
+
     async function initFirebase() {
       try {
         fb = await loadFirebaseSdk();
@@ -1138,6 +1193,12 @@
         const credential = await fb.signInAnonymously(auth);
         myUid = credential.user.uid;
         console.log('Firebase Anonymous Auth Success. UID:', myUid);
+
+        // 匿名 uid 會跨重新整理保留：上次沒按登出留下的憑證要清掉，
+        // 每次載入一律從「未登入」開始（刪不存在的文件不會出錯）
+        fb.deleteDoc(adminAuthRef()).catch((error) => {
+          console.warn('Failed to clear leftover admin credential:', error);
+        });
 
         attachWordsListener();
       } catch (error) {
@@ -1168,7 +1229,7 @@
 
       unsubscribe = fb.onSnapshot(wordsCollection(), (snapshot) => {
         const docs = [];
-        snapshot.forEach((docSnap) => docs.push(docSnap.data()));
+        snapshot.forEach((docSnap) => docs.push({ ...docSnap.data(), _docId: docSnap.id }));
 
         applyWordDocs(docs);
         updateConnectionStatus(true, '同步中 (安全連線)');
@@ -1184,11 +1245,17 @@
     function applyWordDocs(docs) {
       const mergedMap = {};
       currentUserWords.clear();
+      docIdsByText = new Map();
 
       docs.forEach((data) => {
         if (data.text && data.count) {
           mergedMap[data.text] = (mergedMap[data.text] || 0) + data.count;
           if (data.uid === myUid) currentUserWords.add(data.text);
+
+          // 同一個詞可能有多人各寫一份，管理者刪除時要一次刪掉全部
+          const ids = docIdsByText.get(data.text) || [];
+          if (data._docId) ids.push(data._docId);
+          docIdsByText.set(data.text, ids);
         }
       });
 
@@ -1237,7 +1304,7 @@
     }
 
     function demoEmit() {
-      applyWordDocs(Array.from(demoDocs.values()));
+      applyWordDocs(Array.from(demoDocs.entries()).map(([id, doc]) => ({ ...doc, _docId: id })));
     }
 
     function demoAddWords(freqMap) {
@@ -1249,17 +1316,19 @@
       demoEmit();
     }
 
-    function demoDeleteWord(word) {
-      demoDocs.delete(`${DEMO_UID}_${word}`);
+    // asAdmin：連別人寫的那幾份一起刪，與線上管理模式的行為一致
+    function demoDeleteWord(word, asAdmin = false) {
+      if (asAdmin) {
+        for (const [key, doc] of Array.from(demoDocs.entries())) {
+          if (doc.text === word) demoDocs.delete(key);
+        }
+      } else {
+        demoDocs.delete(`${DEMO_UID}_${word}`);
+      }
       demoEmit();
     }
 
-    function demoClearAll(password) {
-      if (password !== DEMO_ADMIN_PASSWORD) {
-        const error = new Error('密碼錯誤');
-        error.code = 'permission-denied';
-        throw error;
-      }
+    function demoClearAll() {
       const deleted = demoDocs.size;
       demoDocs.clear();
       demoEmit();
@@ -1297,7 +1366,11 @@
         if (index < 3) li.classList.add('top-rank');
 
         const escapedText = escapeHtml(text);
-        const hasDeleteBtn = currentUserWords.has(text);
+        // 一般人只能刪自己送出的；管理者每一則都能刪（刪的是所有人的紀錄）
+        const hasDeleteBtn = isAdminMode || currentUserWords.has(text);
+        const deleteTitle = isAdminMode
+          ? `刪除「${escapedText}」（所有人的紀錄）`
+          : `刪除「${escapedText}」`;
 
         li.innerHTML = `
           <div class="rank-label">
@@ -1307,7 +1380,7 @@
           <div class="rank-action-wrapper">
             <span class="rank-count">${count} 次</span>
             ${hasDeleteBtn ? `
-            <button class="delete-btn" data-word="${escapedText}" title="刪除「${escapedText}」" aria-label="刪除字詞 ${escapedText}">
+            <button class="delete-btn${isAdminMode ? ' admin' : ''}" data-word="${escapedText}" title="${deleteTitle}" aria-label="${deleteTitle}">
               ${DELETE_ICON_SVG}
             </button>
             ` : ''}
@@ -1458,28 +1531,57 @@
         return;
       }
 
+      // 按鈕是渲染當下決定的；真正動手前以現在的登入狀態為準
+      const asAdmin = isAdminMode;
+
       const confirmed = await askConfirm({
-        title: '刪除字詞',
-        message: `確定要刪除「${word}」嗎？這會移除你為這個字詞累計的所有次數。`,
+        title: asAdmin ? '刪除字詞（管理者）' : '刪除字詞',
+        message: asAdmin
+          ? `確定要刪除「${word}」嗎？這會移除所有人為這個字詞累計的次數，無法復原。`
+          : `確定要刪除「${word}」嗎？這會移除你為這個字詞累計的所有次數。`,
         confirmText: '刪除'
       });
       if (!confirmed) return;
 
       try {
         if (DEMO_MODE) {
-          demoDeleteWord(word);
+          demoDeleteWord(word, asAdmin);
+        } else if (asAdmin) {
+          await deleteDocsById(docIdsByText.get(word) || []);
         } else {
           await fb.deleteDoc(wordDocRef(word));
         }
         showToast(`已刪除「${word}」`, 'success');
       } catch (error) {
         console.error('Failed to delete word:', error);
-        showToast('刪除失敗：' + error.message, 'error', 6000);
+        handleAdminError(error, '刪除失敗');
       }
     });
 
-    // 一鍵刪除全部：只有管理密碼的 SHA-256 雜湊會離開瀏覽器，
-    // 安全規則拿它比對 config/admin，而 config 前端完全不可讀
+    // 單次 batch 最多 BATCH_LIMIT 個操作，超過就分批
+    async function deleteDocsById(docIds) {
+      for (let i = 0; i < docIds.length; i += BATCH_LIMIT) {
+        const batch = fb.writeBatch(db);
+        docIds.slice(i, i + BATCH_LIMIT).forEach((id) => batch.delete(wordDocRefById(id)));
+        await batch.commit();
+      }
+    }
+
+    // 憑證過期或被清掉時會拿到 permission-denied，這時要退出管理模式，
+    // 否則畫面上還留著一堆按了會失敗的刪除鈕
+    function handleAdminError(error, prefix) {
+      if (error && error.code === 'permission-denied' && isAdminMode) {
+        setAdminMode(false);
+        showToast('管理權限已失效，請重新登入。', 'error', 6000);
+        return;
+      }
+      showToast(`${prefix}：` + (error && error.message ? error.message : '未知錯誤'), 'error', 6000);
+    }
+
+    // 管理者登入：只有管理密碼的 SHA-256 雜湊會離開瀏覽器。安全規則在寫入
+    // admin_auth 時就比對 config/admin，密碼錯誤的雜湊根本寫不進去——所以
+    // 「寫入成功」＝「密碼正確」，不必拿刪除動作去試密碼。憑證在登入期間留著，
+    // 每次刪除時由規則的 isAdmin() 讀取；登出（或下次載入頁面）會刪掉它。
     function showAdminModal(show) {
       if (show) {
         adminError.classList.add('hidden');
@@ -1494,7 +1596,7 @@
     }
 
     function dismissAdminModal() {
-      // 刪除進行中不可中斷
+      // 登入進行中不可中斷
       if (adminSubmit.disabled) return;
       showAdminModal(false);
     }
@@ -1502,16 +1604,25 @@
     function setAdminBusy(busy) {
       adminSubmit.disabled = busy;
       adminCancel.disabled = busy;
-      adminSubmit.querySelector('span').textContent = busy ? '清除中...' : '確認刪除全部';
+      adminSubmit.querySelector('span').textContent = busy ? '登入中...' : '登入';
     }
 
-    clearAllBtn.addEventListener('click', () => {
+    function setAdminMode(on) {
+      isAdminMode = on;
+      document.body.classList.toggle('is-admin', on);
+      // 排行榜的刪除鈕要跟著重畫
+      updateRankingUI(currentList);
+    }
+
+    adminLoginBtn.addEventListener('click', () => {
       if (!isReady()) {
-        showToast('資料庫連線尚未建立或驗證失敗，無法操作。', 'error');
+        showToast('資料庫連線尚未建立或驗證失敗，無法登入。', 'error');
         return;
       }
       showAdminModal(true);
     });
+
+    adminLogoutBtn.addEventListener('click', adminLogout);
 
     adminCancel.addEventListener('click', dismissAdminModal);
     adminModal.addEventListener('click', (e) => {
@@ -1528,57 +1639,100 @@
       setAdminBusy(true);
 
       try {
-        const deleted = DEMO_MODE ? demoClearAll(password) : await runAdminBulkDelete(password);
+        await adminLogin(password);
 
         setAdminBusy(false);
         showAdminModal(false);
-        showToast(
-          deleted === 0 ? '這份文字雲目前沒有任何字詞資料。' : `已清除 ${deleted} 筆字詞資料`,
-          'success'
-        );
+        setAdminMode(true);
+        showToast('已進入管理模式', 'success');
       } catch (error) {
-        console.error('Failed to clear database:', error);
+        console.error('Admin login failed:', error);
         setAdminBusy(false);
         adminError.textContent = error && error.code === 'permission-denied'
           ? '密碼錯誤。'
-          : '清除失敗：' + (error && error.message ? error.message : '未知錯誤');
+          : '登入失敗：' + (error && error.message ? error.message : '未知錯誤');
         adminError.classList.remove('hidden');
         adminPassword.value = '';
         adminPassword.focus();
       }
     });
 
-    async function runAdminBulkDelete(password) {
-      const tempAuthRef = fb.doc(db, 'admin_auth', myUid);
-
-      try {
-        // 只寫雜湊；明文不離開瀏覽器，資料庫也不存明文
-        await fb.setDoc(tempAuthRef, { passwordHash: await sha256Hex(password) });
-
-        let deleted = 0;
-
-        // 分批刪：單次 batch 最多 BATCH_LIMIT 個操作
-        while (true) {
-          const snapshot = await fb.getDocs(fb.query(wordsCollection(), fb.limit(BATCH_LIMIT)));
-          if (snapshot.empty) break;
-
-          const batch = fb.writeBatch(db);
-          snapshot.forEach((docSnap) => batch.delete(docSnap.ref));
-          await batch.commit();
-
-          deleted += snapshot.size;
-          if (snapshot.size < BATCH_LIMIT) break;
+    async function adminLogin(password) {
+      if (DEMO_MODE) {
+        if (password !== DEMO_ADMIN_PASSWORD) {
+          const error = new Error('密碼錯誤');
+          error.code = 'permission-denied';
+          throw error;
         }
+        return;
+      }
+      // 安全規則會把雜湊與 config/admin 比對，不符就 permission-denied
+      await fb.setDoc(adminAuthRef(), { passwordHash: await sha256Hex(password) });
+    }
 
-        return deleted;
-      } finally {
-        // 不論結果如何都要收掉臨時憑證
+    async function adminLogout() {
+      if (!DEMO_MODE && db && myUid) {
         try {
-          await fb.deleteDoc(tempAuthRef);
-        } catch (cleanupError) {
-          console.error('Error cleaning up temp auth document:', cleanupError);
+          await fb.deleteDoc(adminAuthRef());
+        } catch (error) {
+          console.error('Failed to clear admin credential:', error);
         }
       }
+      setAdminMode(false);
+      showToast('已離開管理模式', 'info');
+    }
+
+    // 關掉分頁時盡量把憑證收掉（不保證送得出去，所以載入時還會再清一次）
+    window.addEventListener('pagehide', () => {
+      if (isAdminMode && !DEMO_MODE && db && myUid) fb.deleteDoc(adminAuthRef());
+    });
+
+    clearAllBtn.addEventListener('click', async () => {
+      if (!isAdminMode) return;  // 按鈕本來就只在管理模式顯示
+      if (!isReady()) {
+        showToast('資料庫連線尚未建立或驗證失敗，無法操作。', 'error');
+        return;
+      }
+
+      const confirmed = await askConfirm({
+        title: '清除全部字詞',
+        message: `確定要清除這份文字雲的所有字詞嗎？目前有 ${currentList.length} 個字詞，刪除後無法復原。`,
+        confirmText: '全部清除'
+      });
+      if (!confirmed) return;
+
+      clearAllBtn.disabled = true;
+      try {
+        const deleted = DEMO_MODE ? demoClearAll() : await runAdminBulkDelete();
+        showToast(
+          deleted === 0 ? '這份文字雲目前沒有任何字詞資料。' : `已清除 ${deleted} 筆字詞資料`,
+          'success'
+        );
+      } catch (error) {
+        console.error('Failed to clear database:', error);
+        handleAdminError(error, '清除失敗');
+      } finally {
+        clearAllBtn.disabled = false;
+      }
+    });
+
+    async function runAdminBulkDelete() {
+      let deleted = 0;
+
+      // 分批刪：單次 batch 最多 BATCH_LIMIT 個操作
+      while (true) {
+        const snapshot = await fb.getDocs(fb.query(wordsCollection(), fb.limit(BATCH_LIMIT)));
+        if (snapshot.empty) break;
+
+        const batch = fb.writeBatch(db);
+        snapshot.forEach((docSnap) => batch.delete(docSnap.ref));
+        await batch.commit();
+
+        deleted += snapshot.size;
+        if (snapshot.size < BATCH_LIMIT) break;
+      }
+
+      return deleted;
     }
 
     // crypto.subtle 只在安全環境（HTTPS 或 localhost）可用
@@ -1608,4 +1762,3 @@
   </script>
 </body>
 </html>
-

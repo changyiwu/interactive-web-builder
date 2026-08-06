@@ -37,13 +37,30 @@ polls/<pollId>/votes/<uid>_<題號>      ← poll-page 技能產生的投票頁
 以下區塊必須存在於 `firestore.rules`（本技能的來源專案 `interactive-web-builder` 已含）。它依賴同檔案裡的 `isSignedIn()` 與 `isAdmin()` 兩個共用函式：
 
 ```js
-// 管理者授權：比對使用者臨時憑證與 config/admin 的密碼雜湊。
+// 管理者授權：持有 admin_auth 登入憑證即為管理者。
 // 前端只送 SHA-256 雜湊，明文不離開瀏覽器；config 前端完全不可讀寫，
 // 只有規則內部的 get() 能取用（get() 不受 read 規則限制）。
 function isAdmin() {
   return exists(/databases/$(database)/documents/admin_auth/$(request.auth.uid))
     && get(/databases/$(database)/documents/admin_auth/$(request.auth.uid)).data.passwordHash
        == get(/databases/$(database)/documents/config/admin).data.passwordHash;
+}
+
+// ⚠️ 登入憑證：寫入時就比對 config/admin，密碼錯誤的雜湊根本寫不進來，
+// 所以「寫入成功」＝「密碼正確」。頁面的「管理者登入」靠這個做非破壞性驗證；
+// 最後那個 `== get(config/admin)` 拿掉，登入就會一律成功（錯的密碼也是）。
+match /admin_auth/{uid} {
+  allow get: if isSignedIn() && request.auth.uid == uid;
+  allow list: if false;
+
+  allow create, update: if isSignedIn()
+    && request.auth.uid == uid
+    && request.resource.data.keys().hasOnly(['passwordHash'])
+    && isSha256Hex(request.resource.data.passwordHash)
+    && request.resource.data.passwordHash
+       == get(/databases/$(database)/documents/config/admin).data.passwordHash;
+
+  allow delete: if isSignedIn() && request.auth.uid == uid;
 }
 
 match /clouds/{cloudId}/words/{word} {
@@ -72,7 +89,8 @@ match /clouds/{cloudId}/words/{word} {
 - **`hasOnly()` 與長度上限是防灌爆的關鍵**——沒有它，任何人都能往單份文件塞到 1 MiB 上限。改任一邊都要同步改頁面裡的 `MAX_WORD_LENGTH`（100）。
 - **文件 ID 固定為 `<uid>_<詞>`**，且規則會驗證 `uid + '_' + text == word`。同一人重複送同一個詞只會累加自己那份，「改別人的資料」在規則層就不可能。
 - `timestamp == request.time` 逼前端用 `serverTimestamp()`，客戶端無法偽造時間。
-- **管理密碼是整個專案共用的一組**（`config/admin`），一組密碼可以清空任何一份文字雲。要換密碼跑 `interactive-web-builder/tools/set-admin-password.mjs`，把輸出的雜湊填進 `config/admin.passwordHash`。
+- **管理密碼是整個專案共用的一組**（`config/admin`），一組密碼可以管理任何一份文字雲或投票。要換密碼跑 `interactive-web-builder/tools/set-admin-password.mjs`，把輸出的雜湊填進 `config/admin.passwordHash`。
+- **管理者的刪除權來自 `isAdmin()`，範圍是整個 `delete`**：登入後不只能清空全部，也能刪掉任何一則別人送出的字詞（頁面上就是排行榜每一列的垃圾桶）。憑證文件存活期間才有效，登出／重新整理就沒了。
 
 部署方式（在 `interactive-web-builder` 專案目錄）：
 
@@ -97,11 +115,13 @@ Enforce 已開啟，**任何前端要讀寫這個專案，都必須先 `initiali
 
 ## 已知風險（已接受，不是待辦）
 
-- **管理密碼沒有速率限制**：安全規則做不到節流，任何人都能匿名登入後反覆嘗試刪除來猜密碼。根治要把權限判定移到 Cloud Functions（需 Blaze 方案）。現行做法只是提高成本，不是消除弱點。
+- **管理密碼沒有速率限制**：安全規則做不到節流，任何人都能匿名登入後反覆呼叫「管理者登入」來猜密碼，而且現在一次請求就知道對錯（改成登入制的代價：以前要「寫憑證＋試刪除」兩步）。根治要把權限判定移到 Cloud Functions（需 Blaze 方案）。現行做法只是提高成本，不是消除弱點。
+- **登入狀態綁在瀏覽器的匿名 uid 上**：同一台裝置另開一個分頁載入頁面，會把憑證清掉（那是刻意的清理，避免上次沒登出留下永久憑證），原本登入的分頁下次操作會跳「管理權限已失效」。現場只用一個分頁做管理即可。
 - **同一份文字雲的資料任何人都讀得到**（`allow read: if isSignedIn()`）。這是即時協作的必要條件，不要放敏感內容；也不要在文字雲頁收集學生真名。
 
 ## 查資料與清資料的手動方式
 
 - 看某份文字雲的資料：Firebase Console → Firestore → `clouds` → `<cloudId>` → `words`
-- 整份刪掉：Console 裡刪 `clouds/<cloudId>` 這個文件的子集合，或在頁面上用「一鍵刪除全部」（會清空該 `cloudId` 底下的 `words`，不影響其他文字雲）
+- 整份刪掉：Console 裡刪 `clouds/<cloudId>` 這個文件的子集合，或在頁面上先「管理者登入」再按「清除全部字詞」（會清空該 `cloudId` 底下的 `words`，不影響其他文字雲）
+- 刪掉某一則：頁面上登入後按該列的垃圾桶（會刪掉所有人為那個詞累計的紀錄）
 
