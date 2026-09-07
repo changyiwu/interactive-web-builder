@@ -1117,18 +1117,51 @@
 
       const maxFreq = currentList[0][1];
       const dpr = window.devicePixelRatio || 1;
+      // canvas.width 本身已經乘過 dpr，ctx.font 用的也是裝置像素，
+      // 這裡不可以再乘一次——高 dpi 螢幕會讓最大的詞脹成兩倍，把小詞擠出畫布
       const baseWeight = Math.min(cloudCanvas.width, cloudCanvas.height) / 12;
+      // 只出現 1 次的詞至少是最大那個詞的 30%。原本是固定 12px：log2(1) = 0 會讓
+      // 所有「1 次」的詞一律掉到下限，投影在智慧板上等於一根髮絲。
+      // 但畫布很小時 30% 也只剩幾個像素，所以同時給一個絕對下限
+      const MIN_PX = 10 * dpr;
+      const SMALL_RATIO = Math.max(0.3, Math.min(0.7, MIN_PX / baseWeight));
+      const logMax = Math.log2(maxFreq);
+
+      // 次數 → 字級比例。shrinkToFit 會送進小於 1 的權重逐次重試，
+      // 所以這條必須單調遞減、而且降得下去；不可以用 Math.max 夾下限，
+      // 否則字級永遠到不了 minSize，wordcloud2 會一直遞迴下去
+      function ratioFor(weight) {
+        const factor = (maxFreq <= 1 || logMax <= 0) ? 1 : (Math.log2(Math.max(weight, 1e-6)) / logMax);
+        return SMALL_RATIO + (1 - SMALL_RATIO) * factor;
+      }
+
+      // 詞一多就得整片縮，否則畫布塞滿之後排在後面的詞只能被丟掉。
+      // 中文字寬高都約等於字級，一個詞的墨水面積約「字數 × 字級²」；
+      // 把總面積壓在畫布的 FILL 倍以內。實測 930×575 的畫布放 500 個詞時，
+      // 不縮會掉 88 個、縮到 0.77 倍則一個都不掉，而且反而快 3 倍
+      const FILL = 0.8;
+      let ink = 0;
+      currentList.forEach(([text, count]) => {
+        ink += text.length * Math.pow(ratioFor(count) * baseWeight, 2);
+      });
+      const area = cloudCanvas.width * cloudCanvas.height;
+      let scale = ink > 0 ? Math.min(1, Math.sqrt((area * FILL) / ink)) : 1;
+      // 畫布小、詞又多時上面會縮過頭，把最小的詞壓成看不懂的墨點。
+      // 與其這樣，不如守住可讀字級，真的放不下就交給 shrinkToFit 與排行榜
+      const smallestAtFull = ratioFor(1) * baseWeight;
+      if (smallestAtFull > 0) scale = Math.max(scale, Math.min(1, MIN_PX / smallestAtFull));
+
+      // 網格要跟著最小的字走，不能寫死。原本固定 16 × dpr，在 dpr = 2 的板子上
+      // 是 32 裝置像素——比字還大，每個小詞都被進位成整格，空間就這樣浪費掉
+      const smallest = ratioFor(1) * baseWeight * scale;
+      const gridSize = Math.max(4, Math.round(smallest * 0.5));
 
       WordCloud(cloudCanvas, {
-        list: currentList,
-        gridSize: Math.round(16 * dpr),
-        weightFactor: function (size) {
-          if (maxFreq <= 1) return Math.max(16 * dpr, baseWeight * dpr);
-          const logMax = Math.log2(maxFreq);
-          const factor = logMax > 0 ? (Math.log2(size) / logMax) : 1;
-          // 取對數才能讓次數差距很大時也看得出層次
-          return Math.max(12 * dpr, factor * baseWeight * dpr);
-        },
+        // shrinkToFit 會就地把陣列裡的次數改成 3/4，給它副本才不會連排行榜的次數一起被改掉
+        list: currentList.map(([text, count]) => [text, count]),
+        gridSize: gridSize,
+        // 取對數才能讓次數差距很大時也看得出層次
+        weightFactor: (weight) => ratioFor(weight) * baseWeight * scale,
         fontFamily: '"Outfit", "Noto Sans TC", sans-serif',
         color: (word) => colorForWord(word),
         // 不關掉 shuffle 的話，每次同步整片字都會跳位置
@@ -1136,8 +1169,12 @@
         rotateRatio: 0.3,
         rotationSteps: 2,
         backgroundColor: 'transparent',
-        minSize: 10 * dpr,
-        drawOutOfBound: false
+        // 放低一點，shrinkToFit 才有階梯可以往下踩（每階權重乘 3/4）
+        minSize: 5 * dpr,
+        drawOutOfBound: false,
+        // 塞不下就縮小再試（每次權重乘 3/4，降到 minSize 才放棄），
+        // 不然畫布一滿，排在後面的詞會被默默跳過，排行榜有、畫布卻沒有
+        shrinkToFit: true
       });
     }
 
