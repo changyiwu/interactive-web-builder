@@ -153,7 +153,7 @@ interactive-web-builder/
 ├── firebase.json           # Firebase 專案設定檔
 ├── firestore.rules         # Firestore 安全規則（clouds／polls 兩條路徑的正本）
 ├── .gitignore              # Git 忽略清單
-├── agents.md               # 專案藍圖（跨 Agent 開發規範）
+├── AGENTS.md               # 專案藍圖（跨 Agent 開發規範）
 └── handoff.md              # 交接檔
 ```
 
